@@ -9,20 +9,41 @@ A pleasant-to-use command-line tool for the MCP Registry
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/trose/mcp-registry-cli)
 [![Powered by Cursor/Claude](https://img.shields.io/badge/powered%20by-Cursor%2FClaude-purple.svg)](https://cursor.sh)
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+  - [Homebrew (Recommended)](#homebrew-recommended)
+  - [Manual Installation](#manual-installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [Search Servers](#search-servers)
+  - [List Servers](#list-servers)
+  - [Get Server Information](#get-server-information)
+  - [Configuration](#configuration)
+  - [Authentication](#authentication)
+- [Configuration](#configuration-1)
+- [Examples](#examples)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+
 ## Overview
 
 `mcpreg` is a command-line interface for the [MCP Registry](https://registry.modelcontextprotocol.io), providing easy access to discover, search, and manage Model Context Protocol (MCP) servers. Built with simplicity and user experience in mind, it offers seamless authentication, intelligent caching, and graceful error handling.
 
 ## Features
 
-- 🔍 **Search & Discovery** - Find MCP servers by name or description
-- 📋 **Server Listing** - Browse available servers with pagination
-- ℹ️ **Detailed Information** - Get comprehensive server details including packages and remotes
-- 🔐 **Seamless Authentication** - Automatic GitHub token detection with browser fallback
-- ⚡ **Smart Caching** - Local caching with configurable TTL for faster responses
-- 🛠️ **Configuration Management** - Easy setup and cache management
-- 🎯 **Cross-Platform** - Works on macOS, Linux, and Windows (WSL)
-- 🚀 **Fast & Reliable** - Graceful degradation when API is unavailable
+- **Search & Discovery** - Find MCP servers by name or description
+- **Server Listing** - Browse available servers with pagination
+- **Detailed Information** - Get comprehensive server details including packages and remotes
+- **Seamless Authentication** - Automatic GitHub token detection with browser fallback
+- **Smart Caching** - Local caching with configurable TTL for faster responses
+- **Configuration Management** - Easy setup and cache management
+- **Cross-Platform** - Works on macOS, Linux, and Windows (WSL)
+- **Fast & Reliable** - Graceful degradation when API is unavailable
 
 ## Installation
 
@@ -244,11 +265,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- 📖 [Documentation](https://github.com/your-org/mcp-registry-cli/wiki)
-- 🐛 [Report Issues](https://github.com/your-org/mcp-registry-cli/issues)
-- 💬 [Discussions](https://github.com/your-org/mcp-registry-cli/discussions)
-- 🔗 [MCP Registry](https://registry.modelcontextprotocol.io)
+- [Documentation](https://github.com/your-org/mcp-registry-cli/wiki)
+- [Report Issues](https://github.com/your-org/mcp-registry-cli/issues)
+- [Discussions](https://github.com/your-org/mcp-registry-cli/discussions)
+- [MCP Registry](https://registry.modelcontextprotocol.io)
 
 ---
 
-**Made with ❤️ for the MCP community**
+**Made with love for the MCP community**
