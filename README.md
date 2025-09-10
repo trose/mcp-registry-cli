@@ -9,7 +9,8 @@ A pleasant-to-use command-line tool for the MCP Registry
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/trose/mcp-registry-cli)
 [![Powered by Cursor/Claude](https://img.shields.io/badge/powered%20by-Cursor%2FClaude-purple.svg)](https://cursor.sh)
 
-## Table of Contents
+<details>
+<summary><b>Table of Contents</b></summary>
 
 - [Overview](#overview)
 - [Features](#features)
@@ -29,6 +30,8 @@ A pleasant-to-use command-line tool for the MCP Registry
 - [Contributing](#contributing)
 - [License](#license)
 - [Support](#support)
+
+</details>
 
 ## Overview
 
@@ -265,9 +268,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- [Documentation](https://github.com/your-org/mcp-registry-cli/wiki)
-- [Report Issues](https://github.com/your-org/mcp-registry-cli/issues)
-- [Discussions](https://github.com/your-org/mcp-registry-cli/discussions)
 - [MCP Registry](https://registry.modelcontextprotocol.io)
 
 ---
