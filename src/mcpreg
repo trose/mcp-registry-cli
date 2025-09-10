@@ -62,6 +62,7 @@ COMMANDS:
     uninstall <name>   Uninstall an MCP server
     update             Update installed MCP servers
     config [action]    Manage configuration (show|clear-cache|cache-info)
+    auth               Authenticate with GitHub (opens browser)
     commands           List available commands
     --help, -h         Show this help message
     --version, -v      Show version information
@@ -243,16 +244,35 @@ check_auth() {
         fi
     else
         log_info "No GitHub token found, will use browser authentication when needed"
+        log_info "Run 'mcpreg auth' to authenticate with GitHub"
         return 0  # Don't exit on missing token, just log info
     fi
 }
 
-# Browser authentication (placeholder for future implementation)
+# Browser authentication using GitHub OAuth
 browser_auth() {
     log_info "Opening browser for GitHub authentication..."
-    log_warning "Browser authentication not yet implemented"
-    log_info "Please set GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable"
-    log_info "You can create a token at: https://github.com/settings/tokens"
+    
+    # GitHub OAuth URL for MCP Registry
+    local auth_url="https://registry.modelcontextprotocol.io/v0/auth/github"
+    
+    # Try to open browser
+    if command -v open >/dev/null 2>&1; then
+        # macOS
+        open "$auth_url"
+    elif command -v xdg-open >/dev/null 2>&1; then
+        # Linux
+        xdg-open "$auth_url"
+    elif command -v start >/dev/null 2>&1; then
+        # Windows (Git Bash)
+        start "$auth_url"
+    else
+        log_warning "Could not automatically open browser"
+        log_info "Please manually open: $auth_url"
+    fi
+    
+    log_info "After authenticating, you'll receive a token to set as GITHUB_TOKEN"
+    log_info "You can also create a personal access token at: https://github.com/settings/tokens"
     return 1
 }
 
@@ -528,6 +548,7 @@ cmd_commands() {
     echo "  uninstall <name>   Uninstall an MCP server"
     echo "  update             Update installed MCP servers"
     echo "  config             Manage configuration"
+    echo "  auth               Authenticate with GitHub (opens browser)"
     echo "  commands           List available commands"
     echo "  --help, -h         Show help message"
     echo "  --version, -v      Show version information"
@@ -571,6 +592,9 @@ main() {
             ;;
         config)
             cmd_config "${2:-}"
+            ;;
+        auth)
+            browser_auth
             ;;
         commands)
             cmd_commands
