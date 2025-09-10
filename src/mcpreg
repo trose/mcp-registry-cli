@@ -61,7 +61,7 @@ COMMANDS:
     info <name>        Get information about an MCP server
     uninstall <name>   Uninstall an MCP server
     update             Update installed MCP servers
-    config             Manage configuration
+    config [action]    Manage configuration (show|clear-cache|cache-info)
     commands           List available commands
     --help, -h         Show this help message
     --version, -v      Show version information
@@ -72,6 +72,7 @@ EXAMPLES:
     $SCRIPT_NAME install filesystem
     $SCRIPT_NAME info filesystem
     $SCRIPT_NAME config
+    $SCRIPT_NAME config clear-cache
 
 ENVIRONMENT VARIABLES:
     GITHUB_TOKEN           GitHub authentication token (seamless auth)
@@ -112,15 +113,147 @@ init_directories() {
     mkdir -p "$CACHE_DIR" "$CONFIG_DIR"
 }
 
-# Authentication functions
-check_auth() {
-    if [[ -n "${GITHUB_TOKEN:-}" ]] || [[ -n "${GITHUB_AUTH_TOKEN:-}" ]]; then
-        log_info "Using existing GitHub token for authentication"
+# Caching functions
+get_cache_file() {
+    local endpoint="$1"
+    # Create a safe filename from the endpoint
+    local safe_name=$(echo "$endpoint" | sed 's/[^a-zA-Z0-9._-]/_/g')
+    echo "$CACHE_DIR/${safe_name}.json"
+}
+
+is_cache_valid() {
+    local cache_file="$1"
+    local max_age="${2:-300}" # Default 5 minutes
+    
+    if [[ ! -f "$cache_file" ]]; then
+        return 1
+    fi
+    
+    local file_age
+    file_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null)))
+    
+    if [[ $file_age -lt $max_age ]]; then
         return 0
+    else
+        return 1
+    fi
+}
+
+get_from_cache() {
+    local cache_file="$1"
+    
+    if [[ -f "$cache_file" ]]; then
+        cat "$cache_file"
+        return 0
+    else
+        return 1
+    fi
+}
+
+save_to_cache() {
+    local cache_file="$1"
+    local data="$2"
+    
+    echo "$data" > "$cache_file"
+}
+
+# Enhanced API call with caching
+api_call_with_cache() {
+    local endpoint="$1"
+    local method="${2:-GET}"
+    local data="${3:-}"
+    local cache_ttl="${4:-300}" # Default 5 minutes cache
+    
+    local cache_file
+    cache_file=$(get_cache_file "$endpoint")
+    
+    # For GET requests, try cache first
+    if [[ "$method" == "GET" ]] && is_cache_valid "$cache_file" "$cache_ttl"; then
+        log_info "Using cached data for $endpoint"
+        get_from_cache "$cache_file"
+        return 0
+    fi
+    
+    # Make API call
+    local response
+    response=$(api_call "$endpoint" "$method" "$data")
+    local api_result=$?
+    
+    # Cache successful GET responses
+    if [[ $api_result -eq 0 ]] && [[ "$method" == "GET" ]]; then
+        save_to_cache "$cache_file" "$response"
+    fi
+    
+    echo "$response"
+    return $api_result
+}
+
+# Authentication functions
+validate_github_token() {
+    local token="$1"
+    
+    if [[ -z "$token" ]]; then
+        return 1
+    fi
+    
+    # Test token by making a simple API call to GitHub
+    local response
+    response=$(curl -s -w "\n%{http_code}" \
+        -H "Authorization: Bearer $token" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "https://api.github.com/user" 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+    
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | sed '$d')
+    
+    if [[ "$http_code" -eq 200 ]]; then
+        local username
+        username=$(echo "$body" | jq -r '.login // "unknown"' 2>/dev/null)
+        log_info "GitHub token validated for user: $username"
+        return 0
+    else
+        log_warning "GitHub token validation failed (status: $http_code)"
+        return 1
+    fi
+}
+
+check_auth() {
+    local token=""
+    
+    # Check for GitHub tokens
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        token="$GITHUB_TOKEN"
+    elif [[ -n "${GITHUB_AUTH_TOKEN:-}" ]]; then
+        token="$GITHUB_AUTH_TOKEN"
+    fi
+    
+    if [[ -n "$token" ]]; then
+        if validate_github_token "$token"; then
+            log_info "Using validated GitHub token for authentication"
+            return 0
+        else
+            log_warning "GitHub token is invalid or expired"
+            return 1
+        fi
     else
         log_info "No GitHub token found, will use browser authentication when needed"
         return 0  # Don't exit on missing token, just log info
     fi
+}
+
+# Browser authentication (placeholder for future implementation)
+browser_auth() {
+    log_info "Opening browser for GitHub authentication..."
+    log_warning "Browser authentication not yet implemented"
+    log_info "Please set GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable"
+    log_info "You can create a token at: https://github.com/settings/tokens"
+    return 1
 }
 
 # API functions
@@ -174,7 +307,7 @@ cmd_search() {
     log_info "Searching for: $query"
     
     local response
-    response=$(api_call "/v0/servers?search=$query") || {
+    response=$(api_call_with_cache "/v0/servers?search=$query") || {
         log_warning "API is currently unavailable. Showing example results."
         echo "MCP Registry API is currently experiencing issues."
         echo "Example servers matching '$query':"
@@ -205,7 +338,7 @@ cmd_list() {
     log_info "Listing available MCP servers (limit: $limit)"
     
     local response
-    response=$(api_call "/v0/servers?limit=$limit") || {
+    response=$(api_call_with_cache "/v0/servers?limit=$limit") || {
         log_warning "API is currently unavailable. Showing cached data or placeholder."
         # For now, show a placeholder message
         echo "MCP Registry API is currently experiencing issues."
@@ -249,7 +382,7 @@ cmd_info() {
     log_info "Getting information for: $name"
     
     local response
-    response=$(api_call "/v0/servers/$name")
+    response=$(api_call_with_cache "/v0/servers/$name")
     
     if [[ $? -ne 0 ]]; then
         error_exit "Failed to get server information"
@@ -316,9 +449,74 @@ cmd_update() {
 }
 
 cmd_config() {
-    log_info "Configuration management"
-    # TODO: Implement config functionality
-    echo "Config functionality coming soon..."
+    local action="${1:-show}"
+    
+    case "$action" in
+        show)
+            echo "MCP Registry CLI Configuration:"
+            echo "=============================="
+            echo "Registry URL:     $MCP_REGISTRY_BASE_URL"
+            echo "Cache Directory:  $CACHE_DIR"
+            echo "Config Directory: $CONFIG_DIR"
+            echo
+            echo "Environment Variables:"
+            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+                echo "  GITHUB_TOKEN:     [SET]"
+            else
+                echo "  GITHUB_TOKEN:     [NOT SET]"
+            fi
+            if [[ -n "${GITHUB_AUTH_TOKEN:-}" ]]; then
+                echo "  GITHUB_AUTH_TOKEN: [SET]"
+            else
+                echo "  GITHUB_AUTH_TOKEN: [NOT SET]"
+            fi
+            echo
+            echo "Cache Status:"
+            local cache_files
+            cache_files=$(find "$CACHE_DIR" -name "*.json" 2>/dev/null | wc -l)
+            echo "  Cached files: $cache_files"
+            ;;
+        clear-cache)
+            log_info "Clearing cache directory: $CACHE_DIR"
+            if [[ -d "$CACHE_DIR" ]]; then
+                rm -rf "$CACHE_DIR"/*
+                log_success "Cache cleared successfully"
+            else
+                log_info "Cache directory does not exist"
+            fi
+            ;;
+        cache-info)
+            echo "Cache Information:"
+            echo "=================="
+            if [[ -d "$CACHE_DIR" ]]; then
+                local cache_files
+                cache_files=$(find "$CACHE_DIR" -name "*.json" 2>/dev/null)
+                if [[ -n "$cache_files" ]]; then
+                    echo "Cached endpoints:"
+                    echo "$cache_files" | while read -r file; do
+                        local basename_file
+                        basename_file=$(basename "$file" .json)
+                        local file_age
+                        file_age=$(($(date +%s) - $(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null)))
+                        local age_minutes=$((file_age / 60))
+                        echo "  • $basename_file (age: ${age_minutes}m)"
+                    done
+                else
+                    echo "No cached files found"
+                fi
+            else
+                echo "Cache directory does not exist"
+            fi
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME config [show|clear-cache|cache-info]"
+            echo
+            echo "Commands:"
+            echo "  show         Show current configuration (default)"
+            echo "  clear-cache  Clear all cached data"
+            echo "  cache-info   Show detailed cache information"
+            ;;
+    esac
 }
 
 cmd_commands() {
@@ -372,7 +570,7 @@ main() {
             cmd_update
             ;;
         config)
-            cmd_config
+            cmd_config "${2:-}"
             ;;
         commands)
             cmd_commands
