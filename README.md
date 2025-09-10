@@ -29,14 +29,14 @@ A pleasant-to-use command-line tool for the MCP Registry
 ### Homebrew (Recommended)
 
 ```bash
-brew install mcpreg
+brew install trose/mcpreg/mcpreg
 ```
 
 ### Manual Installation
 
 1. Download the latest release:
 ```bash
-curl -L https://github.com/your-org/mcp-registry-cli/releases/latest/download/mcpreg -o mcpreg
+curl -L https://github.com/trose/mcp-registry-cli/releases/latest/download/mcpreg -o mcpreg
 chmod +x mcpreg
 sudo mv mcpreg /usr/local/bin/
 ```
