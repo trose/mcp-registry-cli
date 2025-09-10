@@ -29,7 +29,8 @@ A pleasant-to-use command-line tool for the MCP Registry
 ### Homebrew (Recommended)
 
 ```bash
-brew install trose/mcpreg/mcpreg
+brew tap trose/mcpreg
+brew install mcpreg
 ```
 
 ### Manual Installation
