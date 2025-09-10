@@ -181,6 +181,7 @@ api_call_with_cache() {
     local method="${2:-GET}"
     local data="${3:-}"
     local cache_ttl="${4:-300}" # Default 5 minutes cache
+    local timeout="${5:-10}"    # Default 10 second timeout
     
     local cache_file
     cache_file=$(get_cache_file "$endpoint")
@@ -192,9 +193,9 @@ api_call_with_cache() {
         return 0
     fi
     
-    # Make API call
+    # Make API call with timeout
     local response
-    response=$(api_call "$endpoint" "$method" "$data")
+    response=$(api_call "$endpoint" "$method" "$data" "$timeout")
     local api_result=$?
     
     # Cache successful GET responses
@@ -324,8 +325,8 @@ select_server_from_matches() {
     log_info "Searching for servers matching: $query"
     
     local search_response
-    if ! search_response=$(api_call_with_cache "/v0/servers?search=$query" 2>/dev/null); then
-        log_warning "API is currently unavailable. Cannot search for servers."
+    if ! search_response=$(api_call_with_cache "/v0/servers?search=$query" "GET" "" 300 5 2>/dev/null); then
+        log_warning "API is currently unavailable or timed out. Cannot search for servers."
         return 1
     fi
     
@@ -503,9 +504,10 @@ api_call() {
     local endpoint="$1"
     local method="${2:-GET}"
     local data="${3:-}"
+    local timeout="${4:-10}"  # Default 10 second timeout
     
     local url="${MCP_REGISTRY_BASE_URL}${endpoint}"
-    local curl_args=(-s -w "\n%{http_code}")
+    local curl_args=(-s -w "\n%{http_code}" --max-time "$timeout" --connect-timeout 5)
     
     if [[ "$method" == "POST" ]] && [[ -n "$data" ]]; then
         curl_args+=(-X POST -H "Content-Type: application/json" -d "$data")
@@ -520,7 +522,8 @@ api_call() {
     
     local response
     if ! response=$(curl "${curl_args[@]}" "$url" 2>/dev/null); then
-        error_exit "Failed to connect to MCP Registry"
+        log_error "Failed to connect to MCP Registry (timeout: ${timeout}s)"
+        return 1
     fi
     
     local http_code
@@ -547,8 +550,8 @@ cmd_search() {
     log_info "Searching for: $query"
     
     local response
-    response=$(api_call_with_cache "/v0/servers?search=$query") || {
-        log_warning "API is currently unavailable. Showing example results."
+    response=$(api_call_with_cache "/v0/servers?search=$query" "GET" "" 300 5) || {
+        log_warning "API is currently unavailable or timed out. Showing example results."
         echo "MCP Registry API is currently experiencing issues."
         echo "Example servers matching '$query':"
         echo "  • io.modelcontextprotocol/filesystem - Filesystem operations server"
@@ -578,8 +581,8 @@ cmd_list() {
     log_info "Listing available MCP servers (limit: $limit)"
     
     local response
-    response=$(api_call_with_cache "/v0/servers?limit=$limit") || {
-        log_warning "API is currently unavailable. Showing cached data or placeholder."
+    response=$(api_call_with_cache "/v0/servers?limit=$limit" "GET" "" 300 5) || {
+        log_warning "API is currently unavailable or timed out. Showing cached data or placeholder."
         # For now, show a placeholder message
         echo "MCP Registry API is currently experiencing issues."
         echo "Please try again later or check https://registry.modelcontextprotocol.io for status."
