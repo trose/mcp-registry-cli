@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0'
+
+      - name: Install dependencies
+        run: |
+          gem install bundler
+          bundle install
+
+      - name: Calculate SHA256
+        id: sha256
+        run: |
+          # Download the tarball and calculate SHA256
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          curl -L "https://github.com/${{ github.repository }}/archive/$TAG_NAME.tar.gz" -o release.tar.gz
+          SHA256=$(shasum -a 256 release.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "Calculated SHA256: $SHA256"
+
+      - name: Update Homebrew formula
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}
+          
+          # Update the formula with the new version and SHA256
+          sed -i "s/url \".*\"/url \"https:\/\/github.com\/${{ github.repository }}\/archive\/$TAG_NAME.tar.gz\"/" Formula/mcpreg.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${{ steps.sha256.outputs.sha256 }}\"/" Formula/mcpreg.rb
+          
+          # Commit and push the updated formula
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add Formula/mcpreg.rb
+          git commit -m "Update formula for $TAG_NAME"
+          git push
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          body: |
+            ## What's Changed
+            
+            - 🚀 New release of MCP Registry CLI
+            - 📦 Available via Homebrew: `brew install mcpreg`
+            - 🔧 Bug fixes and improvements
+            
+            ## Installation
+            
+            ```bash
+            brew install mcpreg
+            ```
+            
+            ## Quick Start
+            
+            ```bash
+            mcpreg search filesystem
+            mcpreg list
+            mcpreg config
+            ```
+            
+            Full documentation: https://github.com/${{ github.repository }}
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq bats
+
+      - name: Run tests
+        run: |
+          chmod +x src/mcpreg
+          bats tests/
+
+      - name: Test basic functionality
+        run: |
+          ./src/mcpreg --version
+          ./src/mcpreg --help
+          ./src/mcpreg commands
+          ./src/mcpreg config
