@@ -13,7 +13,7 @@ readonly SCRIPT_DIR
 readonly SCRIPT_NAME
 
 export SCRIPT_DIR  # Export for external use
-readonly VERSION="0.1.0"
+readonly VERSION="0.2.0"
 
 # Configuration
 readonly MCP_REGISTRY_BASE_URL="${MCP_REGISTRY_BASE_URL:-https://registry.modelcontextprotocol.io}"
