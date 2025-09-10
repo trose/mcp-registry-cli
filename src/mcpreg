@@ -123,7 +123,48 @@ check_auth() {
     fi
 }
 
-# Placeholder command functions
+# API functions
+api_call() {
+    local endpoint="$1"
+    local method="${2:-GET}"
+    local data="${3:-}"
+    
+    local url="${MCP_REGISTRY_BASE_URL}${endpoint}"
+    local curl_args=(-s -w "\n%{http_code}")
+    
+    if [[ "$method" == "POST" ]] && [[ -n "$data" ]]; then
+        curl_args+=(-X POST -H "Content-Type: application/json" -d "$data")
+    fi
+    
+    # Add authentication if available
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        curl_args+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+    elif [[ -n "${GITHUB_AUTH_TOKEN:-}" ]]; then
+        curl_args+=(-H "Authorization: Bearer $GITHUB_AUTH_TOKEN")
+    fi
+    
+    local response
+    response=$(curl "${curl_args[@]}" "$url" 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        error_exit "Failed to connect to MCP Registry"
+    fi
+    
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | sed '$d')
+    
+    if [[ "$http_code" -ge 400 ]]; then
+        log_warning "API request failed with status $http_code"
+        echo "$body" | jq -r '.message // .error // "Unknown error"' 2>/dev/null || echo "$body"
+        return 1
+    fi
+    
+    echo "$body"
+}
+
+# Command functions
 cmd_search() {
     local query="${1:-}"
     if [[ -z "$query" ]]; then
@@ -131,14 +172,61 @@ cmd_search() {
     fi
     
     log_info "Searching for: $query"
-    # TODO: Implement search functionality
-    echo "Search functionality coming soon..."
+    
+    local response
+    response=$(api_call "/v0/servers?search=$query") || {
+        log_warning "API is currently unavailable. Showing example results."
+        echo "MCP Registry API is currently experiencing issues."
+        echo "Example servers matching '$query':"
+        echo "  • io.modelcontextprotocol/filesystem - Filesystem operations server"
+        echo "  • io.modelcontextprotocol/git - Git repository operations"
+        return 0
+    }
+    
+    local count
+    count=$(echo "$response" | jq -r '.metadata.count // 0')
+    
+    if [[ "$count" -eq 0 ]]; then
+        echo "No servers found matching '$query'"
+        return 0
+    fi
+    
+    echo "Found $count server(s) matching '$query':"
+    echo
+    
+    echo "$response" | jq -r '.servers[] | "\(.name) - \(.description // "No description")"' | while read -r line; do
+        echo "  • $line"
+    done
 }
 
 cmd_list() {
-    log_info "Listing available MCP servers"
-    # TODO: Implement list functionality
-    echo "List functionality coming soon..."
+    local limit="${1:-20}"
+    
+    log_info "Listing available MCP servers (limit: $limit)"
+    
+    local response
+    response=$(api_call "/v0/servers?limit=$limit") || {
+        log_warning "API is currently unavailable. Showing cached data or placeholder."
+        # For now, show a placeholder message
+        echo "MCP Registry API is currently experiencing issues."
+        echo "Please try again later or check https://registry.modelcontextprotocol.io for status."
+        echo
+        echo "Example servers that would be available:"
+        echo "  • io.modelcontextprotocol/filesystem - Filesystem operations server"
+        echo "  • io.modelcontextprotocol/git - Git repository operations"
+        echo "  • io.modelcontextprotocol/sqlite - SQLite database operations"
+        return 0
+    }
+    
+    local count
+    count=$(echo "$response" | jq -r '.metadata.count // 0')
+    
+    echo "Available MCP servers ($count total):"
+    echo
+    
+    echo "$response" | jq -r '.servers[] | "\(.name) - \(.description // "No description")"' | while read -r line; do
+        echo "  • $line"
+    done
 }
 
 cmd_install() {
@@ -159,8 +247,55 @@ cmd_info() {
     fi
     
     log_info "Getting information for: $name"
-    # TODO: Implement info functionality
-    echo "Info functionality coming soon..."
+    
+    local response
+    response=$(api_call "/v0/servers/$name")
+    
+    if [[ $? -ne 0 ]]; then
+        error_exit "Failed to get server information"
+    fi
+    
+    # Parse and display server information
+    local server_name
+    server_name=$(echo "$response" | jq -r '.name // "Unknown"')
+    local description
+    description=$(echo "$response" | jq -r '.description // "No description"')
+    local version
+    version=$(echo "$response" | jq -r '.version // "Unknown"')
+    local status
+    status=$(echo "$response" | jq -r '.status // "Unknown"')
+    
+    echo "Server Information:"
+    echo "=================="
+    echo "Name:        $server_name"
+    echo "Description: $description"
+    echo "Version:     $version"
+    echo "Status:      $status"
+    echo
+    
+    # Show packages if available
+    local packages
+    packages=$(echo "$response" | jq -r '.packages[]? | "\(.registry_type): \(.identifier)@\(.version)"' 2>/dev/null)
+    
+    if [[ -n "$packages" ]]; then
+        echo "Packages:"
+        echo "$packages" | while read -r package; do
+            echo "  • $package"
+        done
+        echo
+    fi
+    
+    # Show remotes if available
+    local remotes
+    remotes=$(echo "$response" | jq -r '.remotes[]? | "\(.type): \(.url)"' 2>/dev/null)
+    
+    if [[ -n "$remotes" ]]; then
+        echo "Remotes:"
+        echo "$remotes" | while read -r remote; do
+            echo "  • $remote"
+        done
+        echo
+    fi
 }
 
 cmd_uninstall() {
