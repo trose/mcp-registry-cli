@@ -276,13 +276,8 @@ browser_auth() {
     # Check if already authenticated
     if gh auth status >/dev/null 2>&1; then
         log_info "GitHub CLI is already authenticated"
-        log_info "Refreshing authentication token..."
-        if gh auth refresh >/dev/null 2>&1; then
-            log_success "Authentication refreshed successfully"
-            return 0
-        else
-            log_warning "Failed to refresh authentication, trying to re-authenticate..."
-        fi
+        log_success "Using existing GitHub CLI authentication"
+        return 0
     fi
     
     # Authenticate with GitHub CLI
