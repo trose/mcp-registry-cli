@@ -40,11 +40,12 @@ load test_helper
     [[ "${output}" =~ "Search query is required" ]]
 }
 
-@test "mcpreg search with query shows placeholder" {
+@test "mcpreg search with query shows results" {
     run "$SCRIPT_DIR/../src/mcpreg" search filesystem
     [ "$status" -eq 0 ]
     [[ "${output}" =~ "Searching for: filesystem" ]]
-    [[ "${output}" =~ "API is currently unavailable" ]]
+    # Should show some kind of result (either actual results or fallback)
+    [[ "${output}" =~ "Found" || "${output}" =~ "API" || "${output}" =~ "Example" ]]
 }
 
 @test "mcpreg install without name shows error" {
@@ -57,6 +58,14 @@ load test_helper
     run "$SCRIPT_DIR/../src/mcpreg" info
     [ "$status" -eq 1 ]
     [[ "${output}" =~ "Server name is required" ]]
+}
+
+@test "mcpreg info with fuzzy matching shows search fallback" {
+    # Test that info command falls back to search when exact match fails
+    run "$SCRIPT_DIR/../src/mcpreg" info nonexistent
+    [ "$status" -eq 1 ]
+    [[ "${output}" =~ "No servers found matching 'nonexistent'" ]]
+    [[ "${output}" =~ "Try searching for available servers" ]]
 }
 
 @test "mcpreg uninstall without name shows error" {

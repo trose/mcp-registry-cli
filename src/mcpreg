@@ -62,7 +62,7 @@ COMMANDS:
     search <query>     Search for MCP servers
     list               List available MCP servers
     install <name>     Install an MCP server
-    info <name>        Get information about an MCP server
+    info <name>        Get information about an MCP server (supports fuzzy matching)
     uninstall <name>   Uninstall an MCP server
     update             Update installed MCP servers
     config [action]    Manage configuration (show|clear-cache|cache-info)
@@ -421,10 +421,100 @@ cmd_info() {
     
     log_info "Getting information for: $name"
     
+    # First try exact match
     local response
-    if ! response=$(api_call_with_cache "/v0/servers/$name"); then
-        error_exit "Failed to get server information"
+    if response=$(api_call_with_cache "/v0/servers/$name" 2>/dev/null); then
+        display_server_info "$response"
+        return 0
     fi
+    
+    # If exact match fails, try fuzzy search
+    log_info "Exact match not found, searching for similar servers..."
+    
+    local search_response
+    if ! search_response=$(api_call_with_cache "/v0/servers?search=$name" 2>/dev/null); then
+        log_warning "API is currently unavailable. Cannot search for servers."
+        error_exit "Failed to get server information and search is unavailable"
+    fi
+    
+    local matches
+    matches=$(echo "$search_response" | jq -r '.servers[]? | .name' 2>/dev/null)
+    
+    if [[ -z "$matches" ]]; then
+        echo "No servers found matching '$name'"
+        echo
+        echo "Try searching for available servers:"
+        echo "  $SCRIPT_NAME search $name"
+        echo "  $SCRIPT_NAME list"
+        return 1
+    fi
+    
+    # Count matches
+    local match_count
+    match_count=$(echo "$matches" | wc -l)
+    
+    if [[ $match_count -eq 1 ]]; then
+        # Single match found, use it
+        local exact_name
+        exact_name=$(echo "$matches" | head -n1)
+        log_info "Found single match: $exact_name"
+        
+        if response=$(api_call_with_cache "/v0/servers/$exact_name" 2>/dev/null); then
+            display_server_info "$response"
+            return 0
+        else
+            error_exit "Failed to get information for matched server: $exact_name"
+        fi
+    else
+        # Multiple matches found, prompt user to select
+        echo "Found $match_count servers matching '$name':"
+        echo
+        
+        local i=1
+        local server_names=()
+        echo "$matches" | while read -r server_name; do
+            echo "  $i) $server_name"
+            server_names+=("$server_name")
+            ((i++))
+        done
+        echo
+        
+        # Read user selection
+        local selection
+        while true; do
+            echo -n "Select a server (1-$match_count) or 'q' to quit: "
+            read -r selection
+            
+            if [[ "$selection" == "q" || "$selection" == "quit" ]]; then
+                echo "Cancelled."
+                return 1
+            fi
+            
+            if [[ "$selection" =~ ^[0-9]+$ ]] && [[ $selection -ge 1 ]] && [[ $selection -le $match_count ]]; then
+                break
+            else
+                echo "Please enter a number between 1 and $match_count, or 'q' to quit."
+            fi
+        done
+        
+        # Get the selected server name
+        local selected_name
+        selected_name=$(echo "$matches" | sed -n "${selection}p")
+        
+        log_info "Selected: $selected_name"
+        
+        if response=$(api_call_with_cache "/v0/servers/$selected_name" 2>/dev/null); then
+            display_server_info "$response"
+            return 0
+        else
+            error_exit "Failed to get information for selected server: $selected_name"
+        fi
+    fi
+}
+
+# Helper function to display server information
+display_server_info() {
+    local response="$1"
     
     # Parse and display server information
     local server_name
@@ -575,7 +665,7 @@ cmd_commands() {
     echo "  search <query>     Search for MCP servers"
     echo "  list               List available MCP servers"
     echo "  install <name>     Install an MCP server"
-    echo "  info <name>        Get information about an MCP server"
+    echo "  info <name>        Get information about an MCP server (supports fuzzy matching)"
     echo "  uninstall <name>   Uninstall an MCP server"
     echo "  update             Update installed MCP servers"
     echo "  config             Manage configuration"
