@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq bats
+
+      - name: Run tests
+        run: |
+          chmod +x src/mcpreg
+          bats tests/
+
+      - name: Test basic functionality
+        run: |
+          ./src/mcpreg --version
+          ./src/mcpreg --help
+          ./src/mcpreg commands
+          ./src/mcpreg config
+
+      - name: Test with fake token
+        run: |
+          GITHUB_TOKEN="fake_token" ./src/mcpreg config || true
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: |
+          shellcheck src/mcpreg

@@ -38,8 +38,8 @@ jobs:
           VERSION=${TAG_NAME#v}
           
           # Update the formula with the new version and SHA256
-          sed -i "s/url \".*\"/url \"https:\/\/github.com\/${{ github.repository }}\/archive\/$TAG_NAME.tar.gz\"/" Formula/mcpreg.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${{ steps.sha256.outputs.sha256 }}\"/" Formula/mcpreg.rb
+          sed -i "s|url \".*\"|url \"https://github.com/${{ github.repository }}/archive/$TAG_NAME.tar.gz\"|" Formula/mcpreg.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${{ steps.sha256.outputs.sha256 }}\"|" Formula/mcpreg.rb
           
           # Commit and push the updated formula
           git config --local user.email "action@github.com"
