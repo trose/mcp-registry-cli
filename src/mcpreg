@@ -9,7 +9,7 @@ set -euo pipefail
 # Script directory and configuration
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "$0")"
-readonly VERSION="0.0.1"
+readonly VERSION="0.1.0"
 
 # Configuration
 readonly MCP_REGISTRY_BASE_URL="${MCP_REGISTRY_BASE_URL:-https://registry.modelcontextprotocol.io}"
