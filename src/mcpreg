@@ -64,10 +64,10 @@ COMMANDS:
     search <query>     Search for MCP servers
     list               List available MCP servers
     installed          List installed MCP servers
-    install <name>     Install an MCP server
+    install <name>     Install an MCP server (supports fuzzy matching)
     info <name>        Get information about an MCP server (supports fuzzy matching)
-    uninstall <name>   Uninstall an MCP server
-    update [name]      Update installed MCP servers (all or specific)
+    uninstall <name>   Uninstall an MCP server (supports fuzzy matching)
+    update [name]      Update installed MCP servers (all or specific, supports fuzzy matching)
     config [action]    Manage configuration (show|clear-cache|cache-info)
     auth               Authenticate with GitHub CLI (gh auth login)
     commands           List available commands
@@ -316,6 +316,84 @@ detect_package_manager() {
     return 1
 }
 
+# Server selection function for fuzzy matching
+select_server_from_matches() {
+    local query="$1"
+    local action="$2"  # "install", "uninstall", "update", "info"
+    
+    log_info "Searching for servers matching: $query"
+    
+    local search_response
+    if ! search_response=$(api_call_with_cache "/v0/servers?search=$query" 2>/dev/null); then
+        log_warning "API is currently unavailable. Cannot search for servers."
+        return 1
+    fi
+    
+    local matches
+    matches=$(echo "$search_response" | jq -r '.servers[]? | .name' 2>/dev/null)
+    
+    if [[ -z "$matches" ]]; then
+        echo "No servers found matching '$query'"
+        echo
+        echo "Try searching for available servers:"
+        echo "  $SCRIPT_NAME search $query"
+        echo "  $SCRIPT_NAME list"
+        return 1
+    fi
+    
+    # Count matches
+    local match_count
+    match_count=$(echo "$matches" | wc -l)
+    
+    if [[ $match_count -eq 1 ]]; then
+        # Single match found, return it
+        local exact_name
+        exact_name=$(echo "$matches" | head -n1)
+        log_info "Found single match: $exact_name"
+        echo "$exact_name"
+        return 0
+    else
+        # Multiple matches found, prompt user to select
+        echo "Found $match_count servers matching '$query':"
+        echo
+        
+        local i=1
+        local server_names=()
+        echo "$matches" | while read -r server_name; do
+            echo "  $i) $server_name"
+            server_names+=("$server_name")
+            ((i++))
+        done
+        echo
+        
+        # Read user selection
+        local selection
+        while true; do
+            echo -n "Select a server to $action (1-$match_count) or 'q' to quit: "
+            read -r selection
+            
+            if [[ "$selection" == "q" || "$selection" == "quit" ]]; then
+                echo "Cancelled."
+                return 1
+            fi
+            
+            if [[ "$selection" =~ ^[0-9]+$ ]] && [[ $selection -ge 1 ]] && [[ $selection -le $match_count ]]; then
+                break
+            else
+                echo "Please enter a number between 1 and $match_count, or 'q' to quit."
+            fi
+        done
+        
+        # Get the selected server name
+        local selected_name
+        selected_name=$(echo "$matches" | sed -n "${selection}p")
+        
+        log_info "Selected: $selected_name"
+        echo "$selected_name"
+        return 0
+    fi
+}
+
 # Authentication functions
 validate_github_token() {
     local token="$1"
@@ -543,17 +621,40 @@ cmd_install() {
         return 0
     fi
     
-    # Get server information from registry
+    # First try exact match
     local server_info
-    if ! server_info=$(api_call_with_cache "/v0/servers/$name" 2>/dev/null); then
-        log_warning "Could not find server '$name' in registry, attempting direct installation..."
-        install_package_direct "$name"
+    if server_info=$(api_call_with_cache "/v0/servers/$name" 2>/dev/null); then
+        # Exact match found, proceed with installation
+        install_from_server_info "$server_info" "$name"
         return $?
     fi
     
+    # If exact match fails, try fuzzy search
+    log_info "Exact match not found, searching for similar servers..."
+    local selected_server
+    if selected_server=$(select_server_from_matches "$name" "install"); then
+        # Get server information for the selected server
+        if server_info=$(api_call_with_cache "/v0/servers/$selected_server" 2>/dev/null); then
+            install_from_server_info "$server_info" "$selected_server"
+            return $?
+        else
+            error_exit "Failed to get information for selected server: $selected_server"
+        fi
+    else
+        # No matches found or user cancelled, try direct installation
+        log_warning "No matching servers found, attempting direct installation..."
+        install_package_direct "$name"
+        return $?
+    fi
+}
+
+install_from_server_info() {
+    local server_info="$1"
+    local server_name="$2"
+    
     # Extract package information
     local package_name
-    package_name=$(echo "$server_info" | jq -r '.packages[0].identifier // .name // "'"$name"'"')
+    package_name=$(echo "$server_info" | jq -r '.packages[0].identifier // .name // "'"$server_name"'"')
     local registry_type
     registry_type=$(echo "$server_info" | jq -r '.packages[0].registry_type // "npm"')
     local version
@@ -564,14 +665,14 @@ cmd_install() {
     # Install based on registry type
     case "$registry_type" in
         "npm")
-            install_npm_package "$package_name" "$version" "$name"
+            install_npm_package "$package_name" "$version" "$server_name"
             ;;
         "pip"|"pypi")
-            install_pip_package "$package_name" "$version" "$name"
+            install_pip_package "$package_name" "$version" "$server_name"
             ;;
         *)
             log_warning "Unknown registry type '$registry_type', attempting npm installation..."
-            install_npm_package "$package_name" "$version" "$name"
+            install_npm_package "$package_name" "$version" "$server_name"
             ;;
     esac
 }
@@ -846,11 +947,89 @@ cmd_uninstall() {
     
     log_info "Uninstalling MCP server: $name"
     
-    # Check if package is installed
-    if ! is_package_installed "$name"; then
-        log_warning "Package '$name' is not installed"
+    # Check if package is installed (exact match)
+    if is_package_installed "$name"; then
+        uninstall_package "$name"
+        return $?
+    fi
+    
+    # If not found, try fuzzy matching with installed packages
+    log_info "Package '$name' not found, searching installed packages..."
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    local package_names
+    package_names=$(echo "$installed_packages" | jq -r '.packages | keys[]')
+    
+    local matches
+    matches=$(echo "$package_names" | grep -i "$name" || true)
+    
+    if [[ -z "$matches" ]]; then
+        log_warning "No installed packages found matching '$name'"
+        echo
+        echo "Installed packages:"
+        if [[ -n "$package_names" ]]; then
+            echo "$package_names" | while read -r pkg; do
+                echo "  • $pkg"
+            done
+        else
+            echo "  (none)"
+        fi
         return 0
     fi
+    
+    # Count matches
+    local match_count
+    match_count=$(echo "$matches" | wc -l)
+    
+    if [[ $match_count -eq 1 ]]; then
+        # Single match found, use it
+        local exact_name
+        exact_name=$(echo "$matches" | head -n1)
+        log_info "Found single match: $exact_name"
+        uninstall_package "$exact_name"
+        return $?
+    else
+        # Multiple matches found, prompt user to select
+        echo "Found $match_count installed packages matching '$name':"
+        echo
+        
+        local i=1
+        echo "$matches" | while read -r package_name; do
+            echo "  $i) $package_name"
+            ((i++))
+        done
+        echo
+        
+        # Read user selection
+        local selection
+        while true; do
+            echo -n "Select a package to uninstall (1-$match_count) or 'q' to quit: "
+            read -r selection
+            
+            if [[ "$selection" == "q" || "$selection" == "quit" ]]; then
+                echo "Cancelled."
+                return 1
+            fi
+            
+            if [[ "$selection" =~ ^[0-9]+$ ]] && [[ $selection -ge 1 ]] && [[ $selection -le $match_count ]]; then
+                break
+            else
+                echo "Please enter a number between 1 and $match_count, or 'q' to quit."
+            fi
+        done
+        
+        # Get the selected package name
+        local selected_name
+        selected_name=$(echo "$matches" | sed -n "${selection}p")
+        
+        log_info "Selected: $selected_name"
+        uninstall_package "$selected_name"
+        return $?
+    fi
+}
+
+uninstall_package() {
+    local name="$1"
     
     # Get package information
     local package_info
@@ -943,11 +1122,89 @@ update_specific_package() {
     
     log_info "Updating MCP server: $name"
     
-    # Check if package is installed
-    if ! is_package_installed "$name"; then
-        log_warning "Package '$name' is not installed"
+    # Check if package is installed (exact match)
+    if is_package_installed "$name"; then
+        update_package "$name"
+        return $?
+    fi
+    
+    # If not found, try fuzzy matching with installed packages
+    log_info "Package '$name' not found, searching installed packages..."
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    local package_names
+    package_names=$(echo "$installed_packages" | jq -r '.packages | keys[]')
+    
+    local matches
+    matches=$(echo "$package_names" | grep -i "$name" || true)
+    
+    if [[ -z "$matches" ]]; then
+        log_warning "No installed packages found matching '$name'"
+        echo
+        echo "Installed packages:"
+        if [[ -n "$package_names" ]]; then
+            echo "$package_names" | while read -r pkg; do
+                echo "  • $pkg"
+            done
+        else
+            echo "  (none)"
+        fi
         return 0
     fi
+    
+    # Count matches
+    local match_count
+    match_count=$(echo "$matches" | wc -l)
+    
+    if [[ $match_count -eq 1 ]]; then
+        # Single match found, use it
+        local exact_name
+        exact_name=$(echo "$matches" | head -n1)
+        log_info "Found single match: $exact_name"
+        update_package "$exact_name"
+        return $?
+    else
+        # Multiple matches found, prompt user to select
+        echo "Found $match_count installed packages matching '$name':"
+        echo
+        
+        local i=1
+        echo "$matches" | while read -r package_name; do
+            echo "  $i) $package_name"
+            ((i++))
+        done
+        echo
+        
+        # Read user selection
+        local selection
+        while true; do
+            echo -n "Select a package to update (1-$match_count) or 'q' to quit: "
+            read -r selection
+            
+            if [[ "$selection" == "q" || "$selection" == "quit" ]]; then
+                echo "Cancelled."
+                return 1
+            fi
+            
+            if [[ "$selection" =~ ^[0-9]+$ ]] && [[ $selection -ge 1 ]] && [[ $selection -le $match_count ]]; then
+                break
+            else
+                echo "Please enter a number between 1 and $match_count, or 'q' to quit."
+            fi
+        done
+        
+        # Get the selected package name
+        local selected_name
+        selected_name=$(echo "$matches" | sed -n "${selection}p")
+        
+        log_info "Selected: $selected_name"
+        update_package "$selected_name"
+        return $?
+    fi
+}
+
+update_package() {
+    local name="$1"
     
     # Get package information
     local package_info
@@ -1240,10 +1497,10 @@ cmd_commands() {
     echo "  search <query>     Search for MCP servers"
     echo "  list               List available MCP servers"
     echo "  installed          List installed MCP servers"
-    echo "  install <name>     Install an MCP server"
+    echo "  install <name>     Install an MCP server (supports fuzzy matching)"
     echo "  info <name>        Get information about an MCP server (supports fuzzy matching)"
-    echo "  uninstall <name>   Uninstall an MCP server"
-    echo "  update [name]      Update installed MCP servers (all or specific)"
+    echo "  uninstall <name>   Uninstall an MCP server (supports fuzzy matching)"
+    echo "  update [name]      Update installed MCP servers (all or specific, supports fuzzy matching)"
     echo "  config             Manage configuration"
     echo "  auth               Authenticate with GitHub CLI (gh auth login)"
     echo "  commands           List available commands"
