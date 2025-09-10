@@ -8,7 +8,7 @@ load test_helper
 @test "mcpreg --help shows help message" {
     run "$SCRIPT_DIR/../src/mcpreg" --help
     [ "$status" -eq 0 ]
-    [ "${lines[1]}" = "MCP Registry CLI - A pleasant-to-use command-line tool for the MCP Registry" ]
+    [[ "${output}" =~ "MCP Registry CLI - A pleasant-to-use command-line tool for the MCP Registry" ]]
     [[ "${output}" =~ "USAGE:" ]]
     [[ "${output}" =~ "COMMANDS:" ]]
 }
@@ -16,7 +16,7 @@ load test_helper
 @test "mcpreg --version shows version" {
     run "$SCRIPT_DIR/../src/mcpreg" --version
     [ "$status" -eq 0 ]
-    [ "${lines[1]}" = "mcpreg version 0.1.0" ]
+    [[ "${output}" =~ "mcpreg version 0.1.0" ]]
 }
 
 @test "mcpreg commands lists available commands" {

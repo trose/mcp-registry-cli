@@ -7,10 +7,12 @@
 set -euo pipefail
 
 # Script directory and configuration
-readonly SCRIPT_DIR
-readonly SCRIPT_NAME
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR
+readonly SCRIPT_NAME
+
+export SCRIPT_DIR  # Export for external use
 readonly VERSION="0.1.0"
 
 # Configuration
@@ -121,7 +123,7 @@ get_cache_file() {
     local endpoint="$1"
     # Create a safe filename from the endpoint
     local safe_name
-    safe_name=$(echo "$endpoint" | sed 's/[^a-zA-Z0-9._-]/_/g')
+    safe_name="${endpoint//[^a-zA-Z0-9._-]/_}"
     echo "$CACHE_DIR/${safe_name}.json"
 }
 
@@ -202,12 +204,10 @@ validate_github_token() {
     
     # Test token by making a simple API call to GitHub
     local response
-    response=$(curl -s -w "\n%{http_code}" \
+    if ! response=$(curl -s -w "\n%{http_code}" \
         -H "Authorization: Bearer $token" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/user" 2>/dev/null)
-    
-    if [[ $? -ne 0 ]]; then
+        "https://api.github.com/user" 2>/dev/null); then
         return 1
     fi
     
