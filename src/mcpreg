@@ -62,7 +62,7 @@ COMMANDS:
     uninstall <name>   Uninstall an MCP server
     update             Update installed MCP servers
     config [action]    Manage configuration (show|clear-cache|cache-info)
-    auth               Authenticate with GitHub (opens browser)
+    auth               Authenticate with GitHub CLI (gh auth login)
     commands           List available commands
     --help, -h         Show this help message
     --version, -v      Show version information
@@ -227,11 +227,21 @@ validate_github_token() {
 check_auth() {
     local token=""
     
-    # Check for GitHub tokens
+    # Check for GitHub tokens in environment variables first
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         token="$GITHUB_TOKEN"
     elif [[ -n "${GITHUB_AUTH_TOKEN:-}" ]]; then
         token="$GITHUB_AUTH_TOKEN"
+    fi
+    
+    # If no env token, try to get token from GitHub CLI
+    if [[ -z "$token" ]] && command -v gh >/dev/null 2>&1; then
+        if gh auth status >/dev/null 2>&1; then
+            token=$(gh auth token 2>/dev/null)
+            if [[ -n "$token" ]]; then
+                log_info "Using GitHub CLI authentication"
+            fi
+        fi
     fi
     
     if [[ -n "$token" ]]; then
@@ -243,37 +253,51 @@ check_auth() {
             return 1
         fi
     else
-        log_info "No GitHub token found, will use browser authentication when needed"
-        log_info "Run 'mcpreg auth' to authenticate with GitHub"
+        log_info "No GitHub authentication found"
+        log_info "Run 'mcpreg auth' to authenticate with GitHub CLI"
         return 0  # Don't exit on missing token, just log info
     fi
 }
 
-# Browser authentication using GitHub OAuth
+# GitHub CLI authentication
 browser_auth() {
-    log_info "Opening browser for GitHub authentication..."
+    log_info "Setting up GitHub authentication using GitHub CLI..."
     
-    # GitHub OAuth URL for MCP Registry
-    local auth_url="https://registry.modelcontextprotocol.io/v0/auth/github"
-    
-    # Try to open browser
-    if command -v open >/dev/null 2>&1; then
-        # macOS
-        open "$auth_url"
-    elif command -v xdg-open >/dev/null 2>&1; then
-        # Linux
-        xdg-open "$auth_url"
-    elif command -v start >/dev/null 2>&1; then
-        # Windows (Git Bash)
-        start "$auth_url"
-    else
-        log_warning "Could not automatically open browser"
-        log_info "Please manually open: $auth_url"
+    # Check if gh CLI is installed
+    if ! command -v gh >/dev/null 2>&1; then
+        log_error "GitHub CLI (gh) is not installed"
+        log_info "Please install it first:"
+        log_info "  macOS: brew install gh"
+        log_info "  Linux: https://cli.github.com/"
+        log_info "  Windows: winget install GitHub.cli"
+        return 1
     fi
     
-    log_info "After authenticating, you'll receive a token to set as GITHUB_TOKEN"
-    log_info "You can also create a personal access token at: https://github.com/settings/tokens"
-    return 1
+    # Check if already authenticated
+    if gh auth status >/dev/null 2>&1; then
+        log_info "GitHub CLI is already authenticated"
+        log_info "Refreshing authentication token..."
+        if gh auth refresh >/dev/null 2>&1; then
+            log_success "Authentication refreshed successfully"
+            return 0
+        else
+            log_warning "Failed to refresh authentication, trying to re-authenticate..."
+        fi
+    fi
+    
+    # Authenticate with GitHub CLI
+    log_info "Starting GitHub CLI authentication..."
+    log_info "This will open your browser for GitHub OAuth"
+    
+    if gh auth login --web >/dev/null 2>&1; then
+        log_success "GitHub authentication completed successfully"
+        return 0
+    else
+        log_error "GitHub authentication failed"
+        log_info "You can also set GITHUB_TOKEN manually:"
+        log_info "  export GITHUB_TOKEN=your_token_here"
+        return 1
+    fi
 }
 
 # API functions
@@ -491,6 +515,19 @@ cmd_config() {
                 echo "  GITHUB_AUTH_TOKEN: [NOT SET]"
             fi
             echo
+            echo "GitHub CLI Status:"
+            if command -v gh >/dev/null 2>&1; then
+                if gh auth status >/dev/null 2>&1; then
+                    local gh_user
+                    gh_user=$(gh api user --jq '.login' 2>/dev/null || echo "unknown")
+                    echo "  GitHub CLI:       [AUTHENTICATED] (user: $gh_user)"
+                else
+                    echo "  GitHub CLI:       [NOT AUTHENTICATED]"
+                fi
+            else
+                echo "  GitHub CLI:       [NOT INSTALLED]"
+            fi
+            echo
             echo "Cache Status:"
             local cache_files
             cache_files=$(find "$CACHE_DIR" -name "*.json" 2>/dev/null | wc -l)
@@ -548,7 +585,7 @@ cmd_commands() {
     echo "  uninstall <name>   Uninstall an MCP server"
     echo "  update             Update installed MCP servers"
     echo "  config             Manage configuration"
-    echo "  auth               Authenticate with GitHub (opens browser)"
+    echo "  auth               Authenticate with GitHub CLI (gh auth login)"
     echo "  commands           List available commands"
     echo "  --help, -h         Show help message"
     echo "  --version, -v      Show version information"
