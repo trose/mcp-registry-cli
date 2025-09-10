@@ -1,8 +1,8 @@
 class Mcpreg < Formula
   desc "A pleasant-to-use command-line tool for the MCP Registry"
   homepage "https://github.com/trose/mcp-registry-cli"
-  url "https://github.com/trose/mcp-registry-cli/archive/v0.0.1.tar.gz"
-  sha256 "687bffd3c4cc004a88dd26191ebe6fab5ad7985e2fc88b48564b9aec1eb5e2b6"
+  url "https://github.com/trose/mcp-registry-cli/archive/v0.0.2.tar.gz"
+  sha256 "477d64b2b7f99daad8b2eaf0d0fe83be668d7b019112cad82226c934e13c48e0"
   license "MIT"
   head "https://github.com/trose/mcp-registry-cli.git", branch: "main"
 
