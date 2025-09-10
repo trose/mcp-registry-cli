@@ -7,8 +7,10 @@
 set -euo pipefail
 
 # Script directory and configuration
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR
+readonly SCRIPT_NAME
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_NAME="$(basename "$0")"
 readonly VERSION="0.1.0"
 
 # Configuration
@@ -118,7 +120,8 @@ init_directories() {
 get_cache_file() {
     local endpoint="$1"
     # Create a safe filename from the endpoint
-    local safe_name=$(echo "$endpoint" | sed 's/[^a-zA-Z0-9._-]/_/g')
+    local safe_name
+    safe_name=$(echo "$endpoint" | sed 's/[^a-zA-Z0-9._-]/_/g')
     echo "$CACHE_DIR/${safe_name}.json"
 }
 
@@ -316,9 +319,7 @@ api_call() {
     fi
     
     local response
-    response=$(curl "${curl_args[@]}" "$url" 2>/dev/null)
-    
-    if [[ $? -ne 0 ]]; then
+    if ! response=$(curl "${curl_args[@]}" "$url" 2>/dev/null); then
         error_exit "Failed to connect to MCP Registry"
     fi
     
@@ -421,9 +422,7 @@ cmd_info() {
     log_info "Getting information for: $name"
     
     local response
-    response=$(api_call_with_cache "/v0/servers/$name")
-    
-    if [[ $? -ne 0 ]]; then
+    if ! response=$(api_call_with_cache "/v0/servers/$name"); then
         error_exit "Failed to get server information"
     fi
     
@@ -531,7 +530,7 @@ cmd_config() {
         clear-cache)
             log_info "Clearing cache directory: $CACHE_DIR"
             if [[ -d "$CACHE_DIR" ]]; then
-                rm -rf "$CACHE_DIR"/*
+                rm -rf "${CACHE_DIR:?}"/*
                 log_success "Cache cleared successfully"
             else
                 log_info "Cache directory does not exist"
@@ -608,7 +607,7 @@ main() {
             cmd_search "${2:-}"
             ;;
         list)
-            cmd_list
+            cmd_list "$@"
             ;;
         install)
             cmd_install "${2:-}"

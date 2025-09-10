@@ -16,7 +16,7 @@ load test_helper
 @test "mcpreg --version shows version" {
     run "$SCRIPT_DIR/../src/mcpreg" --version
     [ "$status" -eq 0 ]
-    [ "${lines[1]}" = "mcpreg version 0.0.1" ]
+    [ "${lines[1]}" = "mcpreg version 0.1.0" ]
 }
 
 @test "mcpreg commands lists available commands" {
@@ -44,7 +44,7 @@ load test_helper
     run "$SCRIPT_DIR/../src/mcpreg" search filesystem
     [ "$status" -eq 0 ]
     [[ "${output}" =~ "Searching for: filesystem" ]]
-    [[ "${output}" =~ "Search functionality coming soon" ]]
+    [[ "${output}" =~ "API is currently unavailable" ]]
 }
 
 @test "mcpreg install without name shows error" {
@@ -72,8 +72,8 @@ load test_helper
 }
 
 @test "mcpreg creates cache and config directories" {
-    local cache_dir="$HOME/.cache/mcpreg"
-    local config_dir="$HOME/.config/mcpreg"
+    local cache_dir="$MCP_CACHE_DIR"
+    local config_dir="$MCP_CONFIG_DIR"
     
     # Clean up any existing directories
     rm -rf "$cache_dir" "$config_dir"
