@@ -19,6 +19,8 @@ readonly VERSION="0.1.0"
 readonly MCP_REGISTRY_BASE_URL="${MCP_REGISTRY_BASE_URL:-https://registry.modelcontextprotocol.io}"
 readonly CACHE_DIR="${MCP_CACHE_DIR:-$HOME/.cache/mcpreg}"
 readonly CONFIG_DIR="${MCP_CONFIG_DIR:-$HOME/.config/mcpreg}"
+readonly INSTALLED_PACKAGES_FILE="$CONFIG_DIR/installed_packages.json"
+readonly MCP_CONFIG_FILE="$CONFIG_DIR/mcp_config.json"
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -61,10 +63,11 @@ USAGE:
 COMMANDS:
     search <query>     Search for MCP servers
     list               List available MCP servers
+    installed          List installed MCP servers
     install <name>     Install an MCP server
     info <name>        Get information about an MCP server (supports fuzzy matching)
     uninstall <name>   Uninstall an MCP server
-    update             Update installed MCP servers
+    update [name]      Update installed MCP servers (all or specific)
     config [action]    Manage configuration (show|clear-cache|cache-info)
     auth               Authenticate with GitHub CLI (gh auth login)
     commands           List available commands
@@ -116,6 +119,15 @@ check_dependencies() {
 # Initialize directories
 init_directories() {
     mkdir -p "$CACHE_DIR" "$CONFIG_DIR"
+    
+    # Initialize package tracking files if they don't exist
+    if [[ ! -f "$INSTALLED_PACKAGES_FILE" ]]; then
+        echo '{"packages": {}}' > "$INSTALLED_PACKAGES_FILE"
+    fi
+    
+    if [[ ! -f "$MCP_CONFIG_FILE" ]]; then
+        echo '{"mcpServers": {}}' > "$MCP_CONFIG_FILE"
+    fi
 }
 
 # Caching functions
@@ -192,6 +204,116 @@ api_call_with_cache() {
     
     echo "$response"
     return $api_result
+}
+
+# Package management functions
+get_installed_packages() {
+    if [[ -f "$INSTALLED_PACKAGES_FILE" ]]; then
+        cat "$INSTALLED_PACKAGES_FILE"
+    else
+        echo '{"packages": {}}'
+    fi
+}
+
+is_package_installed() {
+    local package_name="$1"
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    
+    echo "$installed_packages" | jq -e ".packages.\"$package_name\"" >/dev/null 2>&1
+}
+
+get_package_info() {
+    local package_name="$1"
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    
+    echo "$installed_packages" | jq -r ".packages.\"$package_name\" // null"
+}
+
+add_installed_package() {
+    local package_name="$1"
+    local package_info="$2"
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    
+    local updated_packages
+    updated_packages=$(echo "$installed_packages" | jq ".packages.\"$package_name\" = $package_info")
+    echo "$updated_packages" > "$INSTALLED_PACKAGES_FILE"
+}
+
+remove_installed_package() {
+    local package_name="$1"
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    
+    local updated_packages
+    updated_packages=$(echo "$installed_packages" | jq "del(.packages.\"$package_name\")")
+    echo "$updated_packages" > "$INSTALLED_PACKAGES_FILE"
+}
+
+get_mcp_config() {
+    if [[ -f "$MCP_CONFIG_FILE" ]]; then
+        cat "$MCP_CONFIG_FILE"
+    else
+        echo '{"mcpServers": {}}'
+    fi
+}
+
+add_mcp_server_config() {
+    local server_name="$1"
+    local command="$2"
+    local args="$3"
+    local config
+    config=$(get_mcp_config)
+    
+    local server_config
+    server_config=$(jq -n --arg cmd "$command" --argjson args "$args" '{command: $cmd, args: $args}')
+    
+    local updated_config
+    updated_config=$(echo "$config" | jq ".mcpServers.\"$server_name\" = $server_config")
+    echo "$updated_config" > "$MCP_CONFIG_FILE"
+}
+
+remove_mcp_server_config() {
+    local server_name="$1"
+    local config
+    config=$(get_mcp_config)
+    
+    local updated_config
+    updated_config=$(echo "$config" | jq "del(.mcpServers.\"$server_name\")")
+    echo "$updated_config" > "$MCP_CONFIG_FILE"
+}
+
+detect_package_manager() {
+    local package_name="$1"
+    
+    # Check if it's an npm package
+    if command -v npm >/dev/null 2>&1; then
+        if npm view "$package_name" >/dev/null 2>&1; then
+            echo "npm"
+            return 0
+        fi
+    fi
+    
+    # Check if it's a pip package
+    if command -v pip >/dev/null 2>&1; then
+        if pip show "$package_name" >/dev/null 2>&1; then
+            echo "pip"
+            return 0
+        fi
+    fi
+    
+    # Check if it's a pip3 package
+    if command -v pip3 >/dev/null 2>&1; then
+        if pip3 show "$package_name" >/dev/null 2>&1; then
+            echo "pip3"
+            return 0
+        fi
+    fi
+    
+    echo "unknown"
+    return 1
 }
 
 # Authentication functions
@@ -409,8 +531,165 @@ cmd_install() {
     fi
     
     log_info "Installing MCP server: $name"
-    # TODO: Implement install functionality
-    echo "Install functionality coming soon..."
+    
+    # Check if already installed
+    if is_package_installed "$name"; then
+        log_warning "Package '$name' is already installed"
+        local package_info
+        package_info=$(get_package_info "$name")
+        local version
+        version=$(echo "$package_info" | jq -r '.version // "unknown"')
+        echo "Installed version: $version"
+        return 0
+    fi
+    
+    # Get server information from registry
+    local server_info
+    if ! server_info=$(api_call_with_cache "/v0/servers/$name" 2>/dev/null); then
+        log_warning "Could not find server '$name' in registry, attempting direct installation..."
+        install_package_direct "$name"
+        return $?
+    fi
+    
+    # Extract package information
+    local package_name
+    package_name=$(echo "$server_info" | jq -r '.packages[0].identifier // .name // "'"$name"'"')
+    local registry_type
+    registry_type=$(echo "$server_info" | jq -r '.packages[0].registry_type // "npm"')
+    local version
+    version=$(echo "$server_info" | jq -r '.packages[0].version // "latest"')
+    
+    log_info "Found package: $package_name (type: $registry_type, version: $version)"
+    
+    # Install based on registry type
+    case "$registry_type" in
+        "npm")
+            install_npm_package "$package_name" "$version" "$name"
+            ;;
+        "pip"|"pypi")
+            install_pip_package "$package_name" "$version" "$name"
+            ;;
+        *)
+            log_warning "Unknown registry type '$registry_type', attempting npm installation..."
+            install_npm_package "$package_name" "$version" "$name"
+            ;;
+    esac
+}
+
+install_npm_package() {
+    local package_name="$1"
+    local version="$2"
+    local server_name="$3"
+    
+    # Check if npm is available
+    if ! command -v npm >/dev/null 2>&1; then
+        error_exit "npm is not installed. Please install Node.js and npm first."
+    fi
+    
+    log_info "Installing npm package: $package_name@$version"
+    
+    # Install the package
+    if npm install -g "$package_name@$version" >/dev/null 2>&1; then
+        log_success "Successfully installed $package_name@$version"
+        
+        # Add to installed packages tracking
+        local package_info
+        package_info=$(jq -n --arg name "$package_name" --arg version "$version" --arg type "npm" '{name: $name, version: $version, type: $type, installed_at: now}')
+        add_installed_package "$server_name" "$package_info"
+        
+        # Add to MCP configuration
+        local args
+        args=$(jq -n --arg pkg "$package_name" '[$pkg]')
+        add_mcp_server_config "$server_name" "npx" "$args"
+        
+        log_success "Added $server_name to MCP configuration"
+        echo
+        echo "To use this server, add the following to your MCP client configuration:"
+        echo "  \"$server_name\": {"
+        echo "    \"command\": \"npx\","
+        echo "    \"args\": [\"$package_name\"]"
+        echo "  }"
+        
+    else
+        error_exit "Failed to install npm package: $package_name"
+    fi
+}
+
+install_pip_package() {
+    local package_name="$1"
+    local version="$2"
+    local server_name="$3"
+    
+    # Check if pip is available
+    local pip_cmd=""
+    if command -v pip3 >/dev/null 2>&1; then
+        pip_cmd="pip3"
+    elif command -v pip >/dev/null 2>&1; then
+        pip_cmd="pip"
+    else
+        error_exit "pip is not installed. Please install Python and pip first."
+    fi
+    
+    log_info "Installing pip package: $package_name==$version"
+    
+    # Install the package
+    if $pip_cmd install "$package_name==$version" >/dev/null 2>&1; then
+        log_success "Successfully installed $package_name==$version"
+        
+        # Add to installed packages tracking
+        local package_info
+        package_info=$(jq -n --arg name "$package_name" --arg version "$version" --arg type "pip" '{name: $name, version: $version, type: $type, installed_at: now}')
+        add_installed_package "$server_name" "$package_info"
+        
+        # Add to MCP configuration
+        local args
+        args=$(jq -n --arg pkg "$package_name" '[$pkg]')
+        add_mcp_server_config "$server_name" "$package_name" "$args"
+        
+        log_success "Added $server_name to MCP configuration"
+        echo
+        echo "To use this server, add the following to your MCP client configuration:"
+        echo "  \"$server_name\": {"
+        echo "    \"command\": \"$package_name\","
+        echo "    \"args\": []"
+        echo "  }"
+        
+    else
+        error_exit "Failed to install pip package: $package_name"
+    fi
+}
+
+install_package_direct() {
+    local package_name="$1"
+    
+    log_info "Attempting direct installation of: $package_name"
+    
+    # Try npm first
+    if command -v npm >/dev/null 2>&1; then
+        if npm view "$package_name" >/dev/null 2>&1; then
+            log_info "Found package in npm registry"
+            install_npm_package "$package_name" "latest" "$package_name"
+            return $?
+        fi
+    fi
+    
+    # Try pip
+    local pip_cmd=""
+    if command -v pip3 >/dev/null 2>&1; then
+        pip_cmd="pip3"
+    elif command -v pip >/dev/null 2>&1; then
+        pip_cmd="pip"
+    fi
+    
+    if [[ -n "$pip_cmd" ]]; then
+        if $pip_cmd show "$package_name" >/dev/null 2>&1; then
+            log_info "Found package in pip registry"
+            install_pip_package "$package_name" "latest" "$package_name"
+            return $?
+        fi
+    fi
+    
+    error_exit "Package '$package_name' not found in npm or pip registries"
 }
 
 cmd_info() {
@@ -566,14 +845,265 @@ cmd_uninstall() {
     fi
     
     log_info "Uninstalling MCP server: $name"
-    # TODO: Implement uninstall functionality
-    echo "Uninstall functionality coming soon..."
+    
+    # Check if package is installed
+    if ! is_package_installed "$name"; then
+        log_warning "Package '$name' is not installed"
+        return 0
+    fi
+    
+    # Get package information
+    local package_info
+    package_info=$(get_package_info "$name")
+    local package_name
+    package_name=$(echo "$package_info" | jq -r '.name // "'"$name"'"')
+    local package_type
+    package_type=$(echo "$package_info" | jq -r '.type // "npm"')
+    
+    log_info "Uninstalling $package_name (type: $package_type)"
+    
+    # Uninstall based on package type
+    case "$package_type" in
+        "npm")
+            uninstall_npm_package "$package_name" "$name"
+            ;;
+        "pip")
+            uninstall_pip_package "$package_name" "$name"
+            ;;
+        *)
+            log_warning "Unknown package type '$package_type', attempting npm uninstall..."
+            uninstall_npm_package "$package_name" "$name"
+            ;;
+    esac
+    
+    # Remove from tracking
+    remove_installed_package "$name"
+    remove_mcp_server_config "$name"
+    
+    log_success "Successfully uninstalled $name"
+}
+
+uninstall_npm_package() {
+    local package_name="$1"
+    local server_name="$2"
+    
+    # Check if npm is available
+    if ! command -v npm >/dev/null 2>&1; then
+        log_warning "npm is not available, skipping package uninstall"
+        return 0
+    fi
+    
+    log_info "Uninstalling npm package: $package_name"
+    
+    if npm uninstall -g "$package_name" >/dev/null 2>&1; then
+        log_success "Successfully uninstalled npm package: $package_name"
+    else
+        log_warning "Failed to uninstall npm package: $package_name (may not be installed globally)"
+    fi
+}
+
+uninstall_pip_package() {
+    local package_name="$1"
+    local server_name="$2"
+    
+    # Check if pip is available
+    local pip_cmd=""
+    if command -v pip3 >/dev/null 2>&1; then
+        pip_cmd="pip3"
+    elif command -v pip >/dev/null 2>&1; then
+        pip_cmd="pip"
+    else
+        log_warning "pip is not available, skipping package uninstall"
+        return 0
+    fi
+    
+    log_info "Uninstalling pip package: $package_name"
+    
+    if $pip_cmd uninstall -y "$package_name" >/dev/null 2>&1; then
+        log_success "Successfully uninstalled pip package: $package_name"
+    else
+        log_warning "Failed to uninstall pip package: $package_name (may not be installed)"
+    fi
 }
 
 cmd_update() {
-    log_info "Updating MCP servers"
-    # TODO: Implement update functionality
-    echo "Update functionality coming soon..."
+    local package_name="${1:-}"
+    
+    if [[ -n "$package_name" ]]; then
+        # Update specific package
+        update_specific_package "$package_name"
+    else
+        # Update all installed packages
+        update_all_packages
+    fi
+}
+
+update_specific_package() {
+    local name="$1"
+    
+    log_info "Updating MCP server: $name"
+    
+    # Check if package is installed
+    if ! is_package_installed "$name"; then
+        log_warning "Package '$name' is not installed"
+        return 0
+    fi
+    
+    # Get package information
+    local package_info
+    package_info=$(get_package_info "$name")
+    local package_name
+    package_name=$(echo "$package_info" | jq -r '.name // "'"$name"'"')
+    local package_type
+    package_type=$(echo "$package_info" | jq -r '.type // "npm"')
+    local current_version
+    current_version=$(echo "$package_info" | jq -r '.version // "unknown"')
+    
+    log_info "Updating $package_name from $current_version (type: $package_type)"
+    
+    # Update based on package type
+    case "$package_type" in
+        "npm")
+            update_npm_package "$package_name" "$name"
+            ;;
+        "pip")
+            update_pip_package "$package_name" "$name"
+            ;;
+        *)
+            log_warning "Unknown package type '$package_type', attempting npm update..."
+            update_npm_package "$package_name" "$name"
+            ;;
+    esac
+}
+
+update_all_packages() {
+    log_info "Updating all installed MCP servers"
+    
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    local package_count
+    package_count=$(echo "$installed_packages" | jq -r '.packages | length')
+    
+    if [[ "$package_count" -eq 0 ]]; then
+        log_info "No packages installed to update"
+        return 0
+    fi
+    
+    echo "Found $package_count installed package(s):"
+    echo
+    
+    # Get list of package names
+    local package_names
+    package_names=$(echo "$installed_packages" | jq -r '.packages | keys[]')
+    
+    local updated_count=0
+    local failed_count=0
+    
+    while IFS= read -r package_name; do
+        echo "Updating $package_name..."
+        if update_specific_package "$package_name"; then
+            ((updated_count++))
+        else
+            ((failed_count++))
+        fi
+        echo
+    done <<< "$package_names"
+    
+    echo "Update summary:"
+    echo "  ✅ Updated: $updated_count"
+    echo "  ❌ Failed: $failed_count"
+}
+
+update_npm_package() {
+    local package_name="$1"
+    local server_name="$2"
+    
+    # Check if npm is available
+    if ! command -v npm >/dev/null 2>&1; then
+        log_error "npm is not available"
+        return 1
+    fi
+    
+    log_info "Updating npm package: $package_name"
+    
+    # Get latest version
+    local latest_version
+    latest_version=$(npm view "$package_name" version 2>/dev/null)
+    
+    if [[ -z "$latest_version" ]]; then
+        log_error "Could not get latest version for $package_name"
+        return 1
+    fi
+    
+    # Install latest version
+    if npm install -g "$package_name@$latest_version" >/dev/null 2>&1; then
+        log_success "Successfully updated $package_name to $latest_version"
+        
+        # Update package tracking
+        local package_info
+        package_info=$(jq -n --arg name "$package_name" --arg version "$latest_version" --arg type "npm" '{name: $name, version: $version, type: $type, updated_at: now}')
+        add_installed_package "$server_name" "$package_info"
+        
+        return 0
+    else
+        log_error "Failed to update npm package: $package_name"
+        return 1
+    fi
+}
+
+update_pip_package() {
+    local package_name="$1"
+    local server_name="$2"
+    
+    # Check if pip is available
+    local pip_cmd=""
+    if command -v pip3 >/dev/null 2>&1; then
+        pip_cmd="pip3"
+    elif command -v pip >/dev/null 2>&1; then
+        pip_cmd="pip"
+    else
+        log_error "pip is not available"
+        return 1
+    fi
+    
+    log_info "Updating pip package: $package_name"
+    
+    # Get latest version
+    local latest_version
+    latest_version=$($pip_cmd index versions "$package_name" 2>/dev/null | head -n1 | awk '{print $2}' 2>/dev/null)
+    
+    if [[ -z "$latest_version" ]]; then
+        # Fallback: try to upgrade without specifying version
+        log_info "Could not get latest version, attempting upgrade..."
+        if $pip_cmd install --upgrade "$package_name" >/dev/null 2>&1; then
+            log_success "Successfully updated $package_name"
+            
+            # Update package tracking (version unknown)
+            local package_info
+            package_info=$(jq -n --arg name "$package_name" --arg version "latest" --arg type "pip" '{name: $name, version: $version, type: $type, updated_at: now}')
+            add_installed_package "$server_name" "$package_info"
+            
+            return 0
+        else
+            log_error "Failed to update pip package: $package_name"
+            return 1
+        fi
+    fi
+    
+    # Install specific latest version
+    if $pip_cmd install --upgrade "$package_name==$latest_version" >/dev/null 2>&1; then
+        log_success "Successfully updated $package_name to $latest_version"
+        
+        # Update package tracking
+        local package_info
+        package_info=$(jq -n --arg name "$package_name" --arg version "$latest_version" --arg type "pip" '{name: $name, version: $version, type: $type, updated_at: now}')
+        add_installed_package "$server_name" "$package_info"
+        
+        return 0
+    else
+        log_error "Failed to update pip package: $package_name"
+        return 1
+    fi
 }
 
 cmd_config() {
@@ -660,14 +1190,60 @@ cmd_config() {
     esac
 }
 
+cmd_installed() {
+    log_info "Listing installed MCP servers"
+    
+    local installed_packages
+    installed_packages=$(get_installed_packages)
+    local package_count
+    package_count=$(echo "$installed_packages" | jq -r '.packages | length')
+    
+    if [[ "$package_count" -eq 0 ]]; then
+        echo "No MCP servers installed."
+        echo
+        echo "To install a server, use:"
+        echo "  $SCRIPT_NAME install <server-name>"
+        echo
+        echo "To see available servers, use:"
+        echo "  $SCRIPT_NAME list"
+        return 0
+    fi
+    
+    echo "Installed MCP servers ($package_count total):"
+    echo
+    
+    # Get package names and display them
+    local package_names
+    package_names=$(echo "$installed_packages" | jq -r '.packages | keys[]')
+    
+    while IFS= read -r package_name; do
+        local package_info
+        package_info=$(get_package_info "$package_name")
+        local name
+        name=$(echo "$package_info" | jq -r '.name // "'"$package_name"'"')
+        local version
+        version=$(echo "$package_info" | jq -r '.version // "unknown"')
+        local type
+        type=$(echo "$package_info" | jq -r '.type // "unknown"')
+        
+        echo "  • $package_name"
+        echo "    Package: $name@$version ($type)"
+        echo
+    done <<< "$package_names"
+    
+    echo "To update all packages: $SCRIPT_NAME update"
+    echo "To update a specific package: $SCRIPT_NAME update <name>"
+}
+
 cmd_commands() {
     echo "Available commands:"
     echo "  search <query>     Search for MCP servers"
     echo "  list               List available MCP servers"
+    echo "  installed          List installed MCP servers"
     echo "  install <name>     Install an MCP server"
     echo "  info <name>        Get information about an MCP server (supports fuzzy matching)"
     echo "  uninstall <name>   Uninstall an MCP server"
-    echo "  update             Update installed MCP servers"
+    echo "  update [name]      Update installed MCP servers (all or specific)"
     echo "  config             Manage configuration"
     echo "  auth               Authenticate with GitHub CLI (gh auth login)"
     echo "  commands           List available commands"
@@ -699,6 +1275,9 @@ main() {
         list)
             cmd_list "$@"
             ;;
+        installed)
+            cmd_installed
+            ;;
         install)
             cmd_install "${2:-}"
             ;;
@@ -709,7 +1288,7 @@ main() {
             cmd_uninstall "${2:-}"
             ;;
         update)
-            cmd_update
+            cmd_update "${2:-}"
             ;;
         config)
             cmd_config "${2:-}"

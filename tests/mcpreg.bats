@@ -93,3 +93,19 @@ load test_helper
     [ -d "$cache_dir" ]
     [ -d "$config_dir" ]
 }
+
+@test "mcpreg installed shows no packages when none installed" {
+    # Clean up any existing package tracking
+    rm -f "$MCP_CONFIG_DIR/installed_packages.json"
+    
+    run "$SCRIPT_DIR/../src/mcpreg" installed
+    [ "$status" -eq 0 ]
+    [[ "${output}" =~ "No MCP servers installed" ]]
+    [[ "${output}" =~ "To install a server" ]]
+}
+
+@test "mcpreg uninstall non-existent package shows warning" {
+    run "$SCRIPT_DIR/../src/mcpreg" uninstall nonexistent
+    [ "$status" -eq 0 ]
+    [[ "${output}" =~ "Package 'nonexistent' is not installed" ]]
+}
