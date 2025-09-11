@@ -7,8 +7,59 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  lint:
+    name: Lint and Code Quality
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq bats shellcheck
+
+      - name: Run shellcheck
+        run: |
+          shellcheck src/mcpreg
+
+      - name: Check script permissions
+        run: |
+          if [ ! -x src/mcpreg ]; then
+            echo "Error: mcpreg script is not executable"
+            exit 1
+          fi
+
+      - name: Validate script syntax
+        run: |
+          bash -n src/mcpreg
+
+      - name: Check for common issues
+        run: |
+          echo "Checking for common script issues..."
+          
+          # Check for proper shebang
+          if ! head -n1 src/mcpreg | grep -q "#!/bin/bash"; then
+            echo "Warning: Script may not have proper shebang"
+          fi
+          
+          # Check for strict mode
+          if ! grep -q "set -euo pipefail" src/mcpreg; then
+            echo "Error: Script missing strict error handling"
+            exit 1
+          fi
+          
+          # Check for readonly variables
+          if ! grep -q "readonly" src/mcpreg; then
+            echo "Warning: Consider using readonly for constants"
+          fi
+          
+          echo "Code quality checks passed"
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    needs: lint
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,17 +85,41 @@ jobs:
         run: |
           GITHUB_TOKEN="fake_token" ./src/mcpreg config || true
 
-  lint:
+      - name: Test error conditions
+        run: |
+          # Test invalid commands
+          ./src/mcpreg invalid-command || true
+          ./src/mcpreg info || true
+          ./src/mcpreg install || true
+
+  integration:
+    name: Integration Tests
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install shellcheck
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y curl jq
 
-      - name: Run shellcheck
+      - name: Test API integration
         run: |
-          shellcheck src/mcpreg
+          chmod +x src/mcpreg
+          
+          # Test API calls (may fail due to API availability)
+          echo "Testing API integration..."
+          ./src/mcpreg search test || echo "Search test completed"
+          ./src/mcpreg list || echo "List test completed"
+          
+          # Test timeout handling
+          timeout 10s ./src/mcpreg search timeout-test || echo "Timeout test completed"
+
+      - name: Test caching
+        run: |
+          # Test cache functionality
+          ./src/mcpreg config cache-info
+          ./src/mcpreg config clear-cache
+          ./src/mcpreg config cache-info

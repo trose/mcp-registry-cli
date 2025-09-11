@@ -32,20 +32,35 @@ jobs:
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
           echo "Calculated SHA256: $SHA256"
 
-      - name: Update Homebrew formula
+      - name: Update Homebrew tap
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${TAG_NAME#v}
           
+          # Clone the Homebrew tap repository
+          git clone https://github.com/trose/homebrew-mcpreg.git homebrew-tap
+          cd homebrew-tap
+          
           # Update the formula with the new version and SHA256
           sed -i "s|url \".*\"|url \"https://github.com/${{ github.repository }}/archive/$TAG_NAME.tar.gz\"|" Formula/mcpreg.rb
           sed -i "s|sha256 \".*\"|sha256 \"${{ steps.sha256.outputs.sha256 }}\"|" Formula/mcpreg.rb
+          sed -i "s|version [0-9.]*|version $VERSION|" Formula/mcpreg.rb
           
           # Commit and push the updated formula
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add Formula/mcpreg.rb
-          git commit -m "Update formula for $TAG_NAME"
+          git commit -m "Update mcpreg to $TAG_NAME
+
+          - Update URL to $TAG_NAME release
+          - Update SHA256 hash for $TAG_NAME
+          - Update version test to expect $VERSION
+          
+          This release includes:
+          - Automated Homebrew tap updates
+          - Improved CI/CD pipeline
+          - Enhanced security scanning
+          - Multi-platform testing"
           git push
 
       - name: Create Release

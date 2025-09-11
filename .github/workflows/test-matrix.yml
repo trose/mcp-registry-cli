@@ -1,0 +1,166 @@
+name: Test Matrix
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-matrix:
+    name: Test on ${{ matrix.os }} with ${{ matrix.shell }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        shell: [bash, zsh]
+        exclude:
+          # Windows doesn't support zsh natively
+          - os: windows-latest
+            shell: zsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up shell (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "SHELL=${{ matrix.shell }}" >> $GITHUB_ENV
+          echo "Using shell: ${{ matrix.shell }}"
+
+      - name: Set up shell (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "SHELL=bash" >> $GITHUB_ENV
+          echo "Using shell: bash (Git Bash)"
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq bats shellcheck
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install curl jq bats shellcheck
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Install via chocolatey or use pre-installed tools
+          echo "Using pre-installed tools on Windows"
+
+      - name: Make script executable
+        run: |
+          chmod +x src/mcpreg
+
+      - name: Run shellcheck
+        run: |
+          shellcheck src/mcpreg
+
+      - name: Run tests
+        run: |
+          bats tests/
+
+      - name: Test basic functionality
+        run: |
+          ./src/mcpreg --version
+          ./src/mcpreg --help
+          ./src/mcpreg commands
+          ./src/mcpreg config
+
+      - name: Test with fake token
+        run: |
+          GITHUB_TOKEN="fake_token" ./src/mcpreg config || true
+
+      - name: Test Homebrew installation (macOS only)
+        if: runner.os == 'macOS'
+        run: |
+          # Test that the script works when installed via Homebrew
+          echo "Testing Homebrew installation compatibility..."
+          ./src/mcpreg --version
+          ./src/mcpreg config
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: test-matrix
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq bats
+
+      - name: Make script executable
+        run: |
+          chmod +x src/mcpreg
+
+      - name: Test API integration
+        run: |
+          # Test with a real API call (if available)
+          echo "Testing API integration..."
+          ./src/mcpreg search test || echo "API test completed (may fail due to API availability)"
+          ./src/mcpreg list || echo "List test completed (may fail due to API availability)"
+
+      - name: Test error handling
+        run: |
+          # Test various error conditions
+          echo "Testing error handling..."
+          
+          # Test invalid command
+          ./src/mcpreg invalid-command || true
+          
+          # Test missing arguments
+          ./src/mcpreg info || true
+          ./src/mcpreg install || true
+          
+          # Test with invalid token
+          GITHUB_TOKEN="invalid" ./src/mcpreg config || true
+          
+          echo "Error handling tests completed"
+
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq time
+
+      - name: Make script executable
+        run: |
+          chmod +x src/mcpreg
+
+      - name: Benchmark script startup
+        run: |
+          echo "Benchmarking script startup time..."
+          
+          # Test startup time
+          for i in {1..10}; do
+            time ./src/mcpreg --version > /dev/null
+          done
+          
+          echo "Startup benchmark completed"
+
+      - name: Test memory usage
+        run: |
+          echo "Testing memory usage..."
+          
+          # Check memory usage during execution
+          ./src/mcpreg --help > /dev/null &
+          PID=$!
+          sleep 1
+          ps -o pid,vsz,rss,comm -p $PID || true
+          wait $PID
+          
+          echo "Memory usage test completed"

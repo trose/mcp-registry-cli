@@ -1,0 +1,99 @@
+name: Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scan daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  codeql:
+    name: CodeQL Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: bash
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
+      - name: Check for known vulnerabilities
+        run: |
+          echo "Checking for security issues in dependencies..."
+          
+          # Check jq version for known vulnerabilities
+          JQ_VERSION=$(jq --version | cut -d'-' -f2)
+          echo "jq version: $JQ_VERSION"
+          
+          # Check curl version
+          CURL_VERSION=$(curl --version | head -n1 | cut -d' ' -f2)
+          echo "curl version: $CURL_VERSION"
+          
+          # Basic security checks
+          echo "Running basic security checks..."
+          
+          # Check for hardcoded secrets (basic check)
+          if grep -r "password\|secret\|key" src/ --include="*.sh" | grep -v "GITHUB_TOKEN\|GITHUB_AUTH_TOKEN" | grep -v "echo\|log"; then
+            echo "Warning: Potential hardcoded secrets found"
+            exit 1
+          fi
+          
+          # Check for proper error handling
+          if ! grep -q "set -euo pipefail" src/mcpreg; then
+            echo "Error: Missing strict error handling"
+            exit 1
+          fi
+          
+          echo "Security checks passed"
+
+  shellcheck-security:
+    name: Shellcheck Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck with security focus
+        run: |
+          # Run shellcheck with security-focused rules
+          shellcheck -S error -e SC2034,SC1091 src/mcpreg
+          
+          # Check for specific security issues
+          echo "Checking for security-related shell issues..."
+          
+          # Check for unquoted variables
+          if grep -n '\$[A-Za-z_][A-Za-z0-9_]*[^"]' src/mcpreg | grep -v 'echo\|log\|jq\|curl'; then
+            echo "Warning: Potential unquoted variables found"
+          fi
+          
+          echo "Shell security analysis completed"

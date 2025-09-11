@@ -1,0 +1,207 @@
+name: Project Health Check
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  health-check:
+    name: Project Health Dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
+      - name: Check project metrics
+        run: |
+          echo "🔍 Project Health Check Report"
+          echo "================================"
+          echo ""
+          
+          # Check repository size
+          echo "📊 Repository Metrics:"
+          echo "- Repository size: $(du -sh . | cut -f1)"
+          echo "- Number of files: $(find . -type f | wc -l)"
+          echo "- Lines of code: $(find . -name "*.sh" -o -name "*.rb" -o -name "*.md" | xargs wc -l | tail -n1)"
+          echo ""
+          
+          # Check test coverage
+          echo "🧪 Test Coverage:"
+          if [ -d "tests" ]; then
+            echo "- Test files: $(find tests -name "*.bats" | wc -l)"
+            echo "- Total tests: $(grep -r "@test" tests/ | wc -l)"
+          else
+            echo "- No test directory found"
+          fi
+          echo ""
+          
+          # Check documentation
+          echo "📚 Documentation:"
+          if [ -f "README.md" ]; then
+            echo "- README.md: ✅ Present"
+            echo "- README size: $(wc -l < README.md) lines"
+          else
+            echo "- README.md: ❌ Missing"
+          fi
+          
+          if [ -f "USAGE.md" ]; then
+            echo "- USAGE.md: ✅ Present"
+            echo "- USAGE size: $(wc -l < USAGE.md) lines"
+          else
+            echo "- USAGE.md: ❌ Missing"
+          fi
+          
+          if [ -f "CONTRIBUTING.md" ]; then
+            echo "- CONTRIBUTING.md: ✅ Present"
+          else
+            echo "- CONTRIBUTING.md: ❌ Missing"
+          fi
+          echo ""
+          
+          # Check CI/CD setup
+          echo "🚀 CI/CD Status:"
+          if [ -d ".github/workflows" ]; then
+            echo "- Workflow files: $(find .github/workflows -name "*.yml" | wc -l)"
+            echo "- Workflows:"
+            find .github/workflows -name "*.yml" -exec basename {} \; | sed 's/^/  - /'
+          else
+            echo "- No GitHub workflows found"
+          fi
+          echo ""
+          
+          # Check security
+          echo "🔒 Security Status:"
+          if [ -f ".github/dependabot.yml" ]; then
+            echo "- Dependabot: ✅ Configured"
+          else
+            echo "- Dependabot: ❌ Not configured"
+          fi
+          
+          if [ -f ".github/workflows/security.yml" ]; then
+            echo "- Security scanning: ✅ Configured"
+          else
+            echo "- Security scanning: ❌ Not configured"
+          fi
+          echo ""
+          
+          # Check code quality
+          echo "📈 Code Quality:"
+          if [ -f "src/mcpreg" ]; then
+            echo "- Main script: ✅ Present"
+            echo "- Script size: $(wc -l < src/mcpreg) lines"
+            
+            # Check for common quality indicators
+            if grep -q "set -euo pipefail" src/mcpreg; then
+              echo "- Strict mode: ✅ Enabled"
+            else
+              echo "- Strict mode: ❌ Missing"
+            fi
+            
+            if grep -q "readonly" src/mcpreg; then
+              echo "- Readonly variables: ✅ Used"
+            else
+              echo "- Readonly variables: ❌ Not used"
+            fi
+          else
+            echo "- Main script: ❌ Missing"
+          fi
+          echo ""
+          
+          # Check dependencies
+          echo "📦 Dependencies:"
+          if [ -f "Formula/mcpreg.rb" ]; then
+            echo "- Homebrew formula: ✅ Present"
+            if grep -q "depends_on" Formula/mcpreg.rb; then
+              echo "- Dependencies: $(grep "depends_on" Formula/mcpreg.rb | wc -l) declared"
+            else
+              echo "- Dependencies: None declared"
+            fi
+          else
+            echo "- Homebrew formula: ❌ Missing"
+          fi
+          echo ""
+          
+          # Check for common issues
+          echo "⚠️  Potential Issues:"
+          
+          # Check for TODO/FIXME comments
+          TODO_COUNT=$(grep -r "TODO\|FIXME" . --exclude-dir=.git | wc -l)
+          if [ "$TODO_COUNT" -gt 0 ]; then
+            echo "- TODO/FIXME comments: $TODO_COUNT found"
+          else
+            echo "- TODO/FIXME comments: None found"
+          fi
+          
+          # Check for large files
+          LARGE_FILES=$(find . -type f -size +1M | wc -l)
+          if [ "$LARGE_FILES" -gt 0 ]; then
+            echo "- Large files (>1MB): $LARGE_FILES found"
+          else
+            echo "- Large files: None found"
+          fi
+          
+          # Check for binary files
+          BINARY_FILES=$(find . -type f -exec file {} \; | grep -c "binary" || true)
+          if [ "$BINARY_FILES" -gt 0 ]; then
+            echo "- Binary files: $BINARY_FILES found"
+          else
+            echo "- Binary files: None found"
+          fi
+          echo ""
+          
+          echo "✅ Health check completed"
+
+      - name: Check external dependencies
+        run: |
+          echo "🌐 External Dependencies Check:"
+          echo "==============================="
+          echo ""
+          
+          # Check if MCP Registry API is accessible
+          echo "🔗 MCP Registry API:"
+          if curl -s --max-time 10 https://registry.modelcontextprotocol.io/v0/health > /dev/null; then
+            echo "- API Health: ✅ Accessible"
+          else
+            echo "- API Health: ❌ Not accessible or slow"
+          fi
+          echo ""
+          
+          # Check Homebrew tap accessibility
+          echo "🍺 Homebrew Tap:"
+          if curl -s --max-time 10 https://github.com/trose/homebrew-mcpreg > /dev/null; then
+            echo "- Tap Repository: ✅ Accessible"
+          else
+            echo "- Tap Repository: ❌ Not accessible"
+          fi
+          echo ""
+          
+          # Check for latest releases
+          echo "📦 Latest Release:"
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/trose/mcp-registry-cli/releases/latest | jq -r '.tag_name // "none"')
+          if [ "$LATEST_RELEASE" != "none" ]; then
+            echo "- Latest release: $LATEST_RELEASE"
+          else
+            echo "- Latest release: ❌ No releases found"
+          fi
+          echo ""
+          
+          echo "✅ External dependencies check completed"
+
+      - name: Generate health report
+        run: |
+          echo "📋 Health Check Summary"
+          echo "======================"
+          echo ""
+          echo "Report generated on: $(date)"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo ""
+          echo "This automated health check runs weekly to ensure project quality."
+          echo "For detailed metrics, check the workflow logs above."

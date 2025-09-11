@@ -1,0 +1,122 @@
+name: Homebrew Validation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Formula/mcpreg.rb'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Formula/mcpreg.rb'
+
+jobs:
+  validate-formula:
+    name: Validate Homebrew Formula
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "$(/opt/homebrew/bin/brew shellenv)" >> $GITHUB_ENV
+          /opt/homebrew/bin/brew shellenv >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          brew install jq
+
+      - name: Validate formula syntax
+        run: |
+          brew audit --strict Formula/mcpreg.rb
+
+      - name: Test formula installation
+        run: |
+          # Test dry-run installation
+          brew install --dry-run Formula/mcpreg.rb
+
+      - name: Test formula
+        run: |
+          # Test the formula's test block
+          brew test Formula/mcpreg.rb
+
+      - name: Check for common issues
+        run: |
+          echo "Checking for common Homebrew formula issues..."
+          
+          # Check for proper class name
+          if ! grep -q "class Mcpreg < Formula" Formula/mcpreg.rb; then
+            echo "Error: Formula class name should be 'Mcpreg'"
+            exit 1
+          fi
+          
+          # Check for required fields
+          if ! grep -q "desc " Formula/mcpreg.rb; then
+            echo "Error: Formula missing description"
+            exit 1
+          fi
+          
+          if ! grep -q "homepage " Formula/mcpreg.rb; then
+            echo "Error: Formula missing homepage"
+            exit 1
+          fi
+          
+          if ! grep -q "url " Formula/mcpreg.rb; then
+            echo "Error: Formula missing URL"
+            exit 1
+          fi
+          
+          if ! grep -q "sha256 " Formula/mcpreg.rb; then
+            echo "Error: Formula missing SHA256"
+            exit 1
+          fi
+          
+          if ! grep -q "license " Formula/mcpreg.rb; then
+            echo "Error: Formula missing license"
+            exit 1
+          fi
+          
+          # Check for test block
+          if ! grep -q "test do" Formula/mcpreg.rb; then
+            echo "Error: Formula missing test block"
+            exit 1
+          fi
+          
+          echo "Formula validation passed"
+
+  test-tap:
+    name: Test Homebrew Tap
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "$(/opt/homebrew/bin/brew shellenv)" >> $GITHUB_ENV
+          /opt/homebrew/bin/brew shellenv >> $GITHUB_ENV
+
+      - name: Test tap installation
+        run: |
+          # Test adding the tap
+          brew tap trose/mcpreg
+          
+          # Test installing from tap
+          brew install --dry-run mcpreg
+          
+          # Test tap info
+          brew tap-info trose/mcpreg
+
+      - name: Validate tap structure
+        run: |
+          echo "Validating tap structure..."
+          
+          # Check if tap repository exists and is accessible
+          if ! curl -s -o /dev/null -w "%{http_code}" https://github.com/trose/homebrew-mcpreg | grep -q "200"; then
+            echo "Warning: Homebrew tap repository may not be accessible"
+          fi
+          
+          echo "Tap validation completed"
