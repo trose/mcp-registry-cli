@@ -13,6 +13,7 @@ A pleasant-to-use command-line tool for the MCP Registry
 <summary><b>Table of Contents</b></summary>
 
 - [Overview](#overview)
+  - [Web Access](#web-access)
 - [Features](#features)
 - [Installation](#installation)
   - [Homebrew (Recommended)](#homebrew-recommended)
@@ -36,6 +37,10 @@ A pleasant-to-use command-line tool for the MCP Registry
 ## Overview
 
 `mcpreg` is a command-line interface for the [MCP Registry](https://registry.modelcontextprotocol.io), providing easy access to discover, search, and manage Model Context Protocol (MCP) servers. Built with simplicity and user experience in mind, it offers seamless authentication, intelligent caching, and graceful error handling.
+
+### Web Access
+
+You can also browse the MCP Registry through the web interface at [https://registry.fastmcp.cloud/](https://registry.fastmcp.cloud/). This public website provides a browseable view of the entire official MCP registry, updated every 30 minutes, with deduplication by domain for a clean browsing experience.
 
 ## Features
 
@@ -268,7 +273,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- [MCP Registry](https://registry.modelcontextprotocol.io)
+- [MCP Registry API](https://registry.modelcontextprotocol.io)
+- [MCP Registry Web Interface](https://registry.fastmcp.cloud/) - Browse servers online
 
 ---
 
