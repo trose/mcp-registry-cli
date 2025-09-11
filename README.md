@@ -3,7 +3,7 @@
 A pleasant-to-use command-line tool for the MCP Registry
 
 [![CI](https://github.com/trose/mcp-registry-cli/workflows/CI/badge.svg)](https://github.com/trose/mcp-registry-cli/actions)
-[![Version](https://img.shields.io/badge/version-0.0.1-blue.svg)](https://github.com/trose/mcp-registry-cli)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/trose/mcp-registry-cli)
 [![Downloads](https://img.shields.io/badge/downloads-homebrew-brightgreen.svg)](https://formulae.brew.sh/formula/mcpreg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/trose/mcp-registry-cli)
@@ -19,14 +19,9 @@ A pleasant-to-use command-line tool for the MCP Registry
   - [Homebrew (Recommended)](#homebrew-recommended)
   - [Manual Installation](#manual-installation)
 - [Quick Start](#quick-start)
-- [Usage](#usage)
-  - [Search Servers](#search-servers)
-  - [List Servers](#list-servers)
-  - [Get Server Information](#get-server-information)
-  - [Configuration](#configuration)
-  - [Authentication](#authentication)
-- [Configuration](#configuration-1)
-- [Examples](#examples)
+- [Commands](#commands)
+- [Publishing to the Registry](#publishing-to-the-registry)
+- [Configuration](#configuration)
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
@@ -120,30 +115,36 @@ Create a token at: https://github.com/settings/tokens
 
 ## Commands
 
-### Core Commands
-
 | Command | Description | Example |
 |---------|-------------|---------|
-| `search <query>` | Search for MCP servers | `mcpreg search filesystem` |
+| `search <query>` | Search for MCP servers (supports fuzzy matching) | `mcpreg search filesystem` |
 | `list [limit]` | List available servers | `mcpreg list 50` |
-| `info <name>` | Get server details | `mcpreg info io.modelcontextprotocol/filesystem` |
+| `installed` | List installed MCP servers | `mcpreg installed` |
+| `install <name>` | Install an MCP server (supports fuzzy matching) | `mcpreg install filesystem` |
+| `info <name>` | Get server details (supports fuzzy matching) | `mcpreg info filesystem` |
+| `uninstall <name>` | Uninstall an MCP server (supports fuzzy matching) | `mcpreg uninstall filesystem` |
+| `update [name]` | Update installed servers (all or specific) | `mcpreg update filesystem` |
 | `config [action]` | Manage configuration | `mcpreg config show` |
+| `auth` | Authenticate with GitHub CLI | `mcpreg auth` |
+| `commands` | List all available commands | `mcpreg commands` |
+| `--help, -h` | Show help message | `mcpreg --help` |
+| `--version, -v` | Show version information | `mcpreg --version` |
 
-### Configuration Commands
+**📖 For detailed usage instructions, see [USAGE.md](USAGE.md)**
 
-| Command | Description |
-|---------|-------------|
-| `config show` | Show current configuration (default) |
-| `config clear-cache` | Clear all cached data |
-| `config cache-info` | Show detailed cache information |
+## Publishing to the Registry
 
-### Utility Commands
+Want to publish your own MCP server to the registry? The MCP Registry team provides comprehensive documentation on how to publish servers.
 
-| Command | Description |
-|---------|-------------|
-| `commands` | List all available commands |
-| `--help, -h` | Show help message |
-| `--version, -v` | Show version information |
+**📚 [Official Publishing Guide](https://github.com/modelcontextprotocol/registry/blob/main/docs/guides/publishing/publish-server.md)**
+
+The publishing process typically involves:
+1. Preparing your MCP server for distribution
+2. Publishing to npm or PyPI package registries
+3. Submitting your server to the MCP Registry
+4. Following the registry's guidelines and requirements
+
+For the most up-to-date publishing instructions, requirements, and best practices, please refer to the official documentation linked above.
 
 ## Configuration
 
@@ -157,70 +158,7 @@ Create a token at: https://github.com/settings/tokens
 | `MCP_CACHE_DIR` | Cache directory | `~/.cache/mcpreg` |
 | `MCP_CONFIG_DIR` | Config directory | `~/.config/mcpreg` |
 
-### Cache Management
-
-The CLI automatically caches API responses for 5 minutes by default. You can manage the cache:
-
-```bash
-# View cache information
-mcpreg config cache-info
-
-# Clear cache
-mcpreg config clear-cache
-
-# Show configuration
-mcpreg config
-```
-
-## Examples
-
-### Search and Discovery
-
-```bash
-# Search for filesystem-related servers
-mcpreg search filesystem
-
-# Search for git servers
-mcpreg search git
-
-# List first 10 servers
-mcpreg list 10
-```
-
-### Server Information
-
-```bash
-# Get detailed information about a server
-mcpreg info io.modelcontextprotocol/filesystem
-
-# This shows:
-# - Server name and description
-# - Version and status
-# - Available packages (npm, pip, etc.)
-# - Remote configurations
-```
-
-### Configuration Management
-
-```bash
-# Check current setup
-mcpreg config
-
-# Clear cache if you're having issues
-mcpreg config clear-cache
-
-# View cache details
-mcpreg config cache-info
-```
-
-## Error Handling
-
-The CLI is designed to be resilient and user-friendly:
-
-- **API Unavailable**: Shows helpful messages and example data
-- **Invalid Tokens**: Validates GitHub tokens and provides guidance
-- **Network Issues**: Graceful fallback with clear error messages
-- **Missing Dependencies**: Clear installation instructions
+**📖 For detailed configuration and usage examples, see [USAGE.md](USAGE.md)**
 
 ## Development
 
