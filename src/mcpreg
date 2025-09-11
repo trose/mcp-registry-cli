@@ -852,8 +852,12 @@ cmd_info() {
         exact_name=$(echo "$matches" | head -n1)
         log_info "Found single match: $exact_name"
         
-        if response=$(api_call_with_cache "/v0/servers/$exact_name" 2>/dev/null); then
-            display_server_info "$response"
+        # Extract the server info from the search response
+        local server_info
+        server_info=$(echo "$search_response" | jq -r ".servers[] | select(.name == \"$exact_name\")")
+        
+        if [[ -n "$server_info" ]] && [[ "$server_info" != "null" ]]; then
+            display_server_info "$server_info"
             return 0
         else
             error_exit "Failed to get information for matched server: $exact_name"
@@ -879,8 +883,12 @@ cmd_info() {
             first_match=$(echo "$matches" | head -n1)
             log_info "Non-interactive mode: auto-selecting first match: $first_match"
             
-            if response=$(api_call_with_cache "/v0/servers/$first_match" 2>/dev/null); then
-                display_server_info "$response"
+            # Extract the server info from the search response
+            local server_info
+            server_info=$(echo "$search_response" | jq -r ".servers[] | select(.name == \"$first_match\")")
+            
+            if [[ -n "$server_info" ]] && [[ "$server_info" != "null" ]]; then
+                display_server_info "$server_info"
                 return 0
             else
                 error_exit "Failed to get information for selected server: $first_match"
@@ -911,8 +919,12 @@ cmd_info() {
         
         log_info "Selected: $selected_name"
         
-        if response=$(api_call_with_cache "/v0/servers/$selected_name" 2>/dev/null); then
-            display_server_info "$response"
+        # Extract the server info from the search response
+        local server_info
+        server_info=$(echo "$search_response" | jq -r ".servers[] | select(.name == \"$selected_name\")")
+        
+        if [[ -n "$server_info" ]] && [[ "$server_info" != "null" ]]; then
+            display_server_info "$server_info"
             return 0
         else
             error_exit "Failed to get information for selected server: $selected_name"
