@@ -13,7 +13,7 @@ readonly SCRIPT_DIR
 readonly SCRIPT_NAME
 
 export SCRIPT_DIR  # Export for external use
-readonly VERSION="0.2.3"
+readonly VERSION="0.2.4"
 
 # Configuration
 readonly MCP_REGISTRY_BASE_URL="${MCP_REGISTRY_BASE_URL:-https://registry.modelcontextprotocol.io}"
@@ -661,6 +661,7 @@ cmd_install() {
     fi
 }
 
+# shellcheck disable=SC2317
 install_from_server_info() {
     local server_info="$1"
     local server_name="$2"
@@ -690,6 +691,7 @@ install_from_server_info() {
     esac
 }
 
+# shellcheck disable=SC2317
 install_npm_package() {
     local package_name="$1"
     local version="$2"
@@ -729,6 +731,7 @@ install_npm_package() {
     fi
 }
 
+# shellcheck disable=SC2317
 install_pip_package() {
     local package_name="$1"
     local version="$2"
@@ -773,6 +776,7 @@ install_pip_package() {
     fi
 }
 
+# shellcheck disable=SC2317
 install_package_direct() {
     local package_name="$1"
     
@@ -1235,65 +1239,6 @@ install_package_direct() {
     return 1
 }
 
-# Install npm package
-install_npm_package() {
-    local package_name="$1"
-    local server_name="$2"
-    
-    if ! command -v npm >/dev/null 2>&1; then
-        error_exit "npm is not installed. Please install Node.js and npm first."
-    fi
-    
-    log_info "Installing npm package: $package_name"
-    
-    if npm install -g "$package_name"; then
-        # Get installed version
-        local version
-        version=$(npm view "$package_name" version 2>/dev/null || echo "unknown")
-        
-        # Add to tracking
-        local package_info
-        package_info=$(jq -n --arg name "$package_name" --arg type "npm" --arg version "$version" '{name: $name, type: $type, version: $version}')
-        add_installed_package "$server_name" "$package_info"
-        add_mcp_server_config "$server_name" "$package_info"
-        
-        log_success "Successfully installed $package_name@$version"
-        return 0
-    else
-        log_error "Failed to install npm package: $package_name"
-        return 1
-    fi
-}
-
-# Install pip package
-install_pip_package() {
-    local package_name="$1"
-    local server_name="$2"
-    
-    if ! command -v pip >/dev/null 2>&1; then
-        error_exit "pip is not installed. Please install Python and pip first."
-    fi
-    
-    log_info "Installing pip package: $package_name"
-    
-    if pip install "$package_name"; then
-        # Get installed version
-        local version
-        version=$(pip show "$package_name" 2>/dev/null | grep "^Version:" | cut -d' ' -f2 || echo "unknown")
-        
-        # Add to tracking
-        local package_info
-        package_info=$(jq -n --arg name "$package_name" --arg type "pip" --arg version "$version" '{name: $name, type: $type, version: $version}')
-        add_installed_package "$server_name" "$package_info"
-        add_mcp_server_config "$server_name" "$package_info"
-        
-        log_success "Successfully installed $package_name@$version"
-        return 0
-    else
-        log_error "Failed to install pip package: $package_name"
-        return 1
-    fi
-}
 
 cmd_update() {
     local package_name="${1:-}"

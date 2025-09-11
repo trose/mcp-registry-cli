@@ -16,7 +16,7 @@ load test_helper
 @test "mcpreg --version shows version" {
     run "$SCRIPT_DIR/../src/mcpreg" --version
     [ "$status" -eq 0 ]
-    [[ "${output}" =~ "mcpreg version 0.2.3" ]]
+    [[ "${output}" =~ "mcpreg version 0.2.4" ]]
 }
 
 @test "mcpreg commands lists available commands" {
