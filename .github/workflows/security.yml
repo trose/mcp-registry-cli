@@ -10,26 +10,6 @@ on:
     - cron: '0 2 * * *'
 
 jobs:
-  codeql:
-    name: CodeQL Security Analysis
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: bash
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-
   dependency-check:
     name: Dependency Security Check
     runs-on: ubuntu-latest
@@ -70,6 +50,55 @@ jobs:
           fi
           
           echo "Security checks passed"
+
+  bash-security:
+    name: Bash Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install security tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck security analysis
+        run: |
+          echo "Running shellcheck security analysis..."
+          shellcheck -S error -e SC2034,SC1091 src/mcpreg
+
+      - name: Check for security anti-patterns
+        run: |
+          echo "Checking for security anti-patterns in bash scripts..."
+          
+          # Check for dangerous commands
+          if grep -q "eval\|exec\|system" src/mcpreg; then
+            echo "Warning: Potentially dangerous commands found (eval/exec/system)"
+          fi
+          
+          # Check for unquoted variables in critical sections
+          if grep -n '\$[A-Za-z_][A-Za-z0-9_]*[^"]' src/mcpreg | grep -v 'echo\|log\|jq\|curl\|grep'; then
+            echo "Warning: Potential unquoted variables found"
+          fi
+          
+          # Check for proper input validation
+          if ! grep -q "validate_\|check_\|sanitize" src/mcpreg; then
+            echo "Info: Consider adding input validation functions"
+          fi
+          
+          # Check for proper error handling
+          if ! grep -q "set -euo pipefail" src/mcpreg; then
+            echo "Error: Missing strict error handling"
+            exit 1
+          fi
+          
+          # Check for temporary file security
+          if grep -q "mktemp\|tmp" src/mcpreg; then
+            echo "Info: Temporary files detected - ensure proper cleanup"
+          fi
+          
+          echo "Bash security analysis completed"
 
   shellcheck-security:
     name: Shellcheck Security Analysis

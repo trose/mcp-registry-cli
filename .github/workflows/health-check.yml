@@ -85,7 +85,7 @@ jobs:
           fi
           
           if [ -f ".github/workflows/security.yml" ]; then
-            echo "- Security scanning: ✅ Configured"
+            echo "- Security scanning: ✅ Configured (bash-focused)"
           else
             echo "- Security scanning: ❌ Not configured"
           fi
