@@ -1143,6 +1143,146 @@ uninstall_pip_package() {
     fi
 }
 
+# Install package from server information
+install_from_server_info() {
+    local server_info="$1"
+    local server_name="$2"
+    
+    # Extract package information
+    local packages
+    packages=$(echo "$server_info" | jq -r '.packages // []')
+    
+    if [[ "$packages" == "[]" ]] || [[ -z "$packages" ]]; then
+        log_warning "No packages found for server: $server_name"
+        return 1
+    fi
+    
+    # Get the first available package
+    local package_name
+    package_name=$(echo "$packages" | jq -r '.[0].name // empty')
+    local package_type
+    package_type=$(echo "$packages" | jq -r '.[0].type // "npm"')
+    
+    if [[ -z "$package_name" ]]; then
+        log_error "No valid package found for server: $server_name"
+        return 1
+    fi
+    
+    log_info "Installing package: $package_name (type: $package_type)"
+    
+    # Install based on package type
+    case "$package_type" in
+        "npm")
+            install_npm_package "$package_name" "$server_name"
+            ;;
+        "pip")
+            install_pip_package "$package_name" "$server_name"
+            ;;
+        *)
+            log_warning "Unknown package type '$package_type', attempting npm install..."
+            install_npm_package "$package_name" "$server_name"
+            ;;
+    esac
+}
+
+# Install package directly (fallback)
+install_package_direct() {
+    local name="$1"
+    
+    log_info "Attempting direct installation of: $name"
+    
+    # Try npm first
+    if command -v npm >/dev/null 2>&1; then
+        log_info "Trying npm installation..."
+        if npm install -g "$name" >/dev/null 2>&1; then
+            # Add to tracking
+            local package_info
+            package_info=$(jq -n --arg name "$name" --arg type "npm" --arg version "unknown" '{name: $name, type: $type, version: $version}')
+            add_installed_package "$name" "$package_info"
+            add_mcp_server_config "$name" "$package_info"
+            log_success "Successfully installed $name via npm"
+            return 0
+        fi
+    fi
+    
+    # Try pip if npm failed
+    if command -v pip >/dev/null 2>&1; then
+        log_info "Trying pip installation..."
+        if pip install "$name" >/dev/null 2>&1; then
+            # Add to tracking
+            local package_info
+            package_info=$(jq -n --arg name "$name" --arg type "pip" --arg version "unknown" '{name: $name, type: $type, version: $version}')
+            add_installed_package "$name" "$package_info"
+            add_mcp_server_config "$name" "$package_info"
+            log_success "Successfully installed $name via pip"
+            return 0
+        fi
+    fi
+    
+    log_error "Failed to install $name via npm or pip"
+    return 1
+}
+
+# Install npm package
+install_npm_package() {
+    local package_name="$1"
+    local server_name="$2"
+    
+    if ! command -v npm >/dev/null 2>&1; then
+        error_exit "npm is not installed. Please install Node.js and npm first."
+    fi
+    
+    log_info "Installing npm package: $package_name"
+    
+    if npm install -g "$package_name"; then
+        # Get installed version
+        local version
+        version=$(npm view "$package_name" version 2>/dev/null || echo "unknown")
+        
+        # Add to tracking
+        local package_info
+        package_info=$(jq -n --arg name "$package_name" --arg type "npm" --arg version "$version" '{name: $name, type: $type, version: $version}')
+        add_installed_package "$server_name" "$package_info"
+        add_mcp_server_config "$server_name" "$package_info"
+        
+        log_success "Successfully installed $package_name@$version"
+        return 0
+    else
+        log_error "Failed to install npm package: $package_name"
+        return 1
+    fi
+}
+
+# Install pip package
+install_pip_package() {
+    local package_name="$1"
+    local server_name="$2"
+    
+    if ! command -v pip >/dev/null 2>&1; then
+        error_exit "pip is not installed. Please install Python and pip first."
+    fi
+    
+    log_info "Installing pip package: $package_name"
+    
+    if pip install "$package_name"; then
+        # Get installed version
+        local version
+        version=$(pip show "$package_name" 2>/dev/null | grep "^Version:" | cut -d' ' -f2 || echo "unknown")
+        
+        # Add to tracking
+        local package_info
+        package_info=$(jq -n --arg name "$package_name" --arg type "pip" --arg version "$version" '{name: $name, type: $type, version: $version}')
+        add_installed_package "$server_name" "$package_info"
+        add_mcp_server_config "$server_name" "$package_info"
+        
+        log_success "Successfully installed $package_name@$version"
+        return 0
+    else
+        log_error "Failed to install pip package: $package_name"
+        return 1
+    fi
+}
+
 cmd_update() {
     local package_name="${1:-}"
     
