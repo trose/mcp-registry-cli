@@ -15,6 +15,7 @@ A pleasant-to-use Bash CLI tool for interacting with the [MCP Registry](https://
 7. **Semantic versioning** - follow semver for all releases
 8. **Documentation-driven** - document before implementing
 9. **Gitflow best practices** - always use proper branching, feature branches, pull requests, and release workflows
+10. **Always bump version** - remember to increment version number when making changes in a semver project
 
 ### Code Quality Rules
 1. **Bash best practices** - use `set -euo pipefail`, proper quoting, error handling
