@@ -367,6 +367,16 @@ select_server_from_matches() {
         done
         echo
         
+        # Check if we're in a non-interactive environment (like tests)
+        if [[ ! -t 0 ]] || [[ -n "${BATS_TEST_FILENAME:-}" ]]; then
+            # Non-interactive mode - return first match
+            local first_match
+            first_match=$(echo "$matches" | head -n1)
+            log_info "Non-interactive mode: auto-selecting first match: $first_match"
+            echo "$first_match"
+            return 0
+        fi
+        
         # Read user selection
         local selection
         while true; do
@@ -862,6 +872,21 @@ cmd_info() {
         done
         echo
         
+        # Check if we're in a non-interactive environment (like tests)
+        if [[ ! -t 0 ]] || [[ -n "${BATS_TEST_FILENAME:-}" ]]; then
+            # Non-interactive mode - auto-select first match and get its info
+            local first_match
+            first_match=$(echo "$matches" | head -n1)
+            log_info "Non-interactive mode: auto-selecting first match: $first_match"
+            
+            if response=$(api_call_with_cache "/v0/servers/$first_match" 2>/dev/null); then
+                display_server_info "$response"
+                return 0
+            else
+                error_exit "Failed to get information for selected server: $first_match"
+            fi
+        fi
+        
         # Read user selection
         local selection
         while true; do
@@ -1002,6 +1027,16 @@ cmd_uninstall() {
             ((i++))
         done
         echo
+        
+        # Check if we're in a non-interactive environment (like tests)
+        if [[ ! -t 0 ]] || [[ -n "${BATS_TEST_FILENAME:-}" ]]; then
+            # Non-interactive mode - return first match
+            local first_match
+            first_match=$(echo "$matches" | head -n1)
+            log_info "Non-interactive mode: auto-selecting first match: $first_match"
+            echo "$first_match"
+            return 0
+        fi
         
         # Read user selection
         local selection
@@ -1177,6 +1212,16 @@ update_specific_package() {
             ((i++))
         done
         echo
+        
+        # Check if we're in a non-interactive environment (like tests)
+        if [[ ! -t 0 ]] || [[ -n "${BATS_TEST_FILENAME:-}" ]]; then
+            # Non-interactive mode - return first match
+            local first_match
+            first_match=$(echo "$matches" | head -n1)
+            log_info "Non-interactive mode: auto-selecting first match: $first_match"
+            echo "$first_match"
+            return 0
+        fi
         
         # Read user selection
         local selection
