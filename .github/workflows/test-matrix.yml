@@ -57,7 +57,8 @@ jobs:
         run: |
           chmod +x src/mcpreg
 
-      - name: Run shellcheck
+      - name: Run shellcheck (Unix only)
+        if: runner.os != 'Windows'
         run: |
           shellcheck src/mcpreg
 
