@@ -1489,11 +1489,9 @@ cmd_config() {
                     echo "Cached endpoints:"
                     while IFS= read -r file; do
                         [[ -n "$file" ]] || continue
-                        local basename_file
                         basename_file=$(basename "$file" .json)
-                        local file_age
                         file_age=$(($(date +%s) - $(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null)))
-                        local age_minutes=$((file_age / 60))
+                        age_minutes=$((file_age / 60))
                         echo "  • $basename_file (age: ${age_minutes}m)"
                     done <<< "$cache_files"
                 else
