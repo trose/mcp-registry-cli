@@ -51,7 +51,7 @@ load test_helper
 @test "mcpreg install with invalid package shows error" {
     run "$SCRIPT_DIR/../src/mcpreg" install definitely-does-not-exist-12345
     [ "$status" -eq 1 ]
-    [[ "${output}" =~ "Failed to install definitely-does-not-exist-12345 via npm or pip" ]]
+    [[ "${output}" =~ "Package 'definitely-does-not-exist-12345' not found in npm or pip registries" ]]
 }
 
 @test "mcpreg install shows fuzzy matching when exact match fails" {
