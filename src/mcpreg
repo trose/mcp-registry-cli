@@ -1487,13 +1487,13 @@ cmd_config() {
                 cache_files=$(find "$CACHE_DIR" -name "*.json" 2>/dev/null)
                 if [[ -n "$cache_files" ]]; then
                     echo "Cached endpoints:"
-                    while IFS= read -r file; do
+                    echo "$cache_files" | while IFS= read -r file; do
                         [[ -n "$file" ]] || continue
                         basename_file=$(basename "$file" .json)
                         file_age=$(($(date +%s) - $(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null)))
                         age_minutes=$((file_age / 60))
                         echo "  • $basename_file (age: ${age_minutes}m)"
-                    done <<< "$cache_files"
+                    done
                 else
                     echo "No cached files found"
                 fi
