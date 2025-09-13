@@ -37,8 +37,8 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${TAG_NAME#v}
           
-          # Clone the Homebrew tap repository
-          git clone https://github.com/trose/homebrew-mcpreg.git homebrew-tap
+          # Clone the Homebrew tap repository with authentication
+          git clone https://${{ secrets.GITHUB_TOKEN }}@github.com/trose/homebrew-mcpreg.git homebrew-tap
           cd homebrew-tap
           
           # Update the formula with the new version and SHA256
